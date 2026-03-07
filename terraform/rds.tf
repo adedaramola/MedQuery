@@ -18,7 +18,7 @@ resource "aws_db_instance" "postgres" {
   identifier = "${var.app_name}-postgres"
 
   engine               = "postgres"
-  engine_version       = "16.3"
+  engine_version       = "16.13"
   instance_class       = var.db_instance_class
   allocated_storage    = 20
   max_allocated_storage = 100  # auto-scaling up to 100 GiB
@@ -56,10 +56,11 @@ resource "aws_db_parameter_group" "postgres" {
   name   = "${var.app_name}-postgres16"
   family = "postgres16"
 
-  # shared_preload_libraries is required to activate pgvector
+  # shared_preload_libraries is a static parameter — requires pending-reboot apply method
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 
   tags = { Name = "${var.app_name}-postgres16" }

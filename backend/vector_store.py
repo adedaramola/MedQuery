@@ -9,7 +9,7 @@ import pandas as pd
 from openai import OpenAI
 
 from backend.config import OPENAI_API_KEY, EMBED_MODEL, N_RESULTS
-from backend.db import get_conn, put_conn
+from backend.db import get_conn, get_vector_conn, put_conn
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ def _embed(texts: List[str]) -> List[np.ndarray]:
 
 def _query_table(table: str, query: str, n: int = N_RESULTS) -> List[str]:
     embedding = _embed([query])[0]
-    conn = get_conn()
+    conn = get_vector_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -131,7 +131,7 @@ def count_device() -> int:
 
 def _upsert(table: str, ids: List[str], docs: List[str], metas: List[dict]) -> None:
     embeddings = _embed(docs)
-    conn = get_conn()
+    conn = get_vector_conn()
     try:
         with conn.cursor() as cur:
             for id_, doc, emb, meta in zip(ids, docs, embeddings, metas):
