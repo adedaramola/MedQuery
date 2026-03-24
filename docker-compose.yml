@@ -11,6 +11,10 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DATABASE_URL=${DATABASE_URL}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:80}
+      - API_KEY=${API_KEY:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - MAX_HISTORY_TURNS=${MAX_HISTORY_TURNS:-10}
       - PYTHONUNBUFFERED=1
     volumes:
       - ./logs:/app/logs
@@ -23,20 +27,23 @@ services:
       start_period: 40s
 
   frontend:
-    image: node:18-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        - REACT_APP_API_URL=http://localhost:8000
     container_name: medical-rag-frontend
-    working_dir: /app
     ports:
-      - "3000:3000"
-    environment:
-      - REACT_APP_API_URL=http://backend:8000
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: sh -c "npm install && npm start"
+      - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/nginx-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   logs:

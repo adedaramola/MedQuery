@@ -15,7 +15,10 @@ EMBED_MODEL: str = "text-embedding-3-small"
 DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://localhost/medical_rag")
 N_RESULTS: int = 5
 MAX_ITERATIONS: int = 3
-MAX_HISTORY_TURNS: int = 10
+MAX_HISTORY_TURNS: int = int(os.getenv("MAX_HISTORY_TURNS", "10"))
+# Approximate token budget per history turn (used for token-aware truncation).
+# gpt-4o-mini averages ~4 chars/token; 300 tokens ≈ 1200 chars per turn.
+MAX_TOKENS_PER_TURN: int = 300
 API_VERSION: str = "1.0.0"
 
 # Security
@@ -24,6 +27,9 @@ ALLOWED_ORIGINS: list = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").sp
 # Optional API key. If set, all /api/query requests must include header: X-API-Key: <value>
 # Leave unset (or empty) during local development to skip auth.
 API_KEY: str = os.getenv("API_KEY", "")
+
+# Web search provider — Tavily (production) or DuckDuckGo (fallback / dev)
+TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
 
 class _JsonFormatter(logging.Formatter):
     """Emit each log record as a single JSON object — easy to parse in log aggregators."""

@@ -1,82 +1,96 @@
 """
-Unit tests for backend/pipeline/state.py :: compute_confidence
+Unit tests for backend/pipeline/state.py :: compute_source_quality
+
+Validates that the source-quality descriptor correctly reflects
+retrieval origin (tier, label, relevance, iterations) and includes
+the required disclaimer. Does NOT test for numeric confidence values —
+those were removed as misleading.
 """
 import pytest
 from tests.conftest import make_state
-from backend.pipeline.state import compute_confidence
+from backend.pipeline.state import compute_source_quality
 
 
-class TestComputeConfidence:
-    # ── Source-based base scores ──────────────────────────────────────────
+class TestComputeSourceQuality:
+    # ── Tier assignment by source ─────────────────────────────────────────
 
-    def test_qna_source_base(self):
+    def test_qna_source_is_verified_corpus(self):
         state = make_state(source="Medical Q&A Collection", is_relevant="Yes", iteration_count=1)
-        assert compute_confidence(state) == pytest.approx(0.90)
+        result = compute_source_quality(state)
+        assert result["tier"] == "verified_corpus"
 
-    def test_device_source_base(self):
+    def test_device_source_is_verified_corpus(self):
         state = make_state(source="Medical Device Manual", is_relevant="Yes", iteration_count=1)
-        assert compute_confidence(state) == pytest.approx(0.85)
+        result = compute_source_quality(state)
+        assert result["tier"] == "verified_corpus"
 
-    def test_web_search_source_base(self):
+    def test_web_search_tavily_is_external_web(self):
+        state = make_state(source="Web Search (Tavily)", is_relevant="Yes", iteration_count=1)
+        result = compute_source_quality(state)
+        assert result["tier"] == "external_web"
+
+    def test_web_search_duckduckgo_is_external_web(self):
         state = make_state(source="Web Search (DuckDuckGo)", is_relevant="Yes", iteration_count=1)
-        assert compute_confidence(state) == pytest.approx(0.65)
+        result = compute_source_quality(state)
+        assert result["tier"] == "external_web"
 
-    def test_failed_web_search_source(self):
+    def test_failed_web_search_is_failed(self):
         state = make_state(source="Web Search (failed)", is_relevant="Yes", iteration_count=1)
-        assert compute_confidence(state) == pytest.approx(0.40)
+        result = compute_source_quality(state)
+        assert result["tier"] == "failed"
 
-    def test_unknown_source_falls_to_default(self):
-        state = make_state(source="Unknown Source", is_relevant="Yes", iteration_count=1)
-        assert compute_confidence(state) == pytest.approx(0.40)
+    def test_unknown_source_is_unknown(self):
+        state = make_state(source="SomeOtherSource", is_relevant="Yes", iteration_count=1)
+        result = compute_source_quality(state)
+        assert result["tier"] == "unknown"
 
-    # ── Relevance penalty ─────────────────────────────────────────────────
+    # ── Label is a non-empty human-readable string ────────────────────────
 
-    def test_not_relevant_penalises_score(self):
-        state = make_state(source="Medical Q&A Collection", is_relevant="No", iteration_count=1)
-        # 0.90 - 0.15 = 0.75
-        assert compute_confidence(state) == pytest.approx(0.75)
+    def test_label_is_string(self):
+        for source in ["Medical Q&A Collection", "Web Search (Tavily)", "Web Search (failed)", ""]:
+            result = compute_source_quality(make_state(source=source))
+            assert isinstance(result["label"], str)
+            assert len(result["label"]) > 0
 
-    def test_not_relevant_web_search(self):
-        state = make_state(source="Web Search (DuckDuckGo)", is_relevant="No", iteration_count=1)
-        # 0.65 - 0.15 = 0.50
-        assert compute_confidence(state) == pytest.approx(0.50)
+    # ── Relevance is reflected ────────────────────────────────────────────
 
-    # ── Iteration penalty ─────────────────────────────────────────────────
+    def test_relevant_true_when_yes(self):
+        state = make_state(is_relevant="Yes")
+        assert compute_source_quality(state)["is_relevant"] is True
 
-    def test_second_iteration_penalises(self):
-        state = make_state(source="Medical Q&A Collection", is_relevant="Yes", iteration_count=2)
-        # 0.90 - 0.08 = 0.82
-        assert compute_confidence(state) == pytest.approx(0.82)
+    def test_relevant_false_when_no(self):
+        state = make_state(is_relevant="No")
+        assert compute_source_quality(state)["is_relevant"] is False
 
-    def test_third_iteration_penalises(self):
-        state = make_state(source="Medical Q&A Collection", is_relevant="Yes", iteration_count=3)
-        # 0.90 - 0.16 = 0.74
-        assert compute_confidence(state) == pytest.approx(0.74)
+    def test_relevant_case_insensitive_yes(self):
+        for val in ("YES", "yes", "Yes"):
+            assert compute_source_quality(make_state(is_relevant=val))["is_relevant"] is True
 
-    def test_first_iteration_no_penalty(self):
-        state = make_state(source="Medical Device Manual", is_relevant="Yes", iteration_count=1)
-        # max(0, 1-1) * 0.08 = 0
-        assert compute_confidence(state) == pytest.approx(0.85)
+    # ── Iterations are reflected ──────────────────────────────────────────
 
-    # ── Floor / ceiling clamping ──────────────────────────────────────────
+    def test_iterations_stored(self):
+        for n in (1, 2, 3):
+            result = compute_source_quality(make_state(iteration_count=n))
+            assert result["iterations"] == n
 
-    def test_score_never_below_zero(self):
-        # worst case: unknown source (0.40), not relevant (-0.15), many iterations
-        state = make_state(source="Unknown", is_relevant="No", iteration_count=10)
-        assert compute_confidence(state) >= 0.0
+    # ── Disclaimer is always present ──────────────────────────────────────
 
-    def test_score_never_above_one(self):
-        state = make_state(source="Medical Q&A Collection", is_relevant="Yes", iteration_count=1)
-        assert compute_confidence(state) <= 1.0
+    def test_disclaimer_always_present(self):
+        for source in ["Medical Q&A Collection", "Web Search (Tavily)", ""]:
+            result = compute_source_quality(make_state(source=source))
+            assert "disclaimer" in result
+            assert len(result["disclaimer"]) > 20
 
-    # ── Combining penalties ───────────────────────────────────────────────
+    def test_disclaimer_mentions_professional(self):
+        result = compute_source_quality(make_state())
+        assert "healthcare professional" in result["disclaimer"].lower() or \
+               "professional" in result["disclaimer"].lower()
 
-    def test_combined_penalties(self):
-        state = make_state(source="Medical Q&A Collection", is_relevant="No", iteration_count=3)
-        # 0.90 - 0.15 - 0.16 = 0.59
-        assert compute_confidence(state) == pytest.approx(0.59)
+    # ── Return type is always dict ────────────────────────────────────────
 
-    def test_is_relevant_case_insensitive(self):
-        state_upper = make_state(source="Medical Q&A Collection", is_relevant="YES", iteration_count=1)
-        state_lower = make_state(source="Medical Q&A Collection", is_relevant="yes", iteration_count=1)
-        assert compute_confidence(state_upper) == compute_confidence(state_lower)
+    def test_always_returns_dict(self):
+        state = make_state(source="", is_relevant="Yes", iteration_count=1)
+        result = compute_source_quality(state)
+        assert isinstance(result, dict)
+        for key in ("tier", "label", "is_relevant", "iterations", "disclaimer"):
+            assert key in result

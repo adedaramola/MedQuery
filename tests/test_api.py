@@ -25,8 +25,8 @@ def _pipeline_result(**overrides) -> dict:
         is_relevant="Yes",
         relevance_reason="Context is relevant",
         iteration_count=1,
-        confidence=0.90,
         context="Retrieved context about diabetes.",
+        # source_quality is set by make_state default
     )
     result.update(overrides)
     return result
@@ -98,7 +98,7 @@ class TestQueryEndpoint:
         assert "query" in data
         assert "answer" in data
         assert "source" in data
-        assert "confidence" in data
+        assert "source_quality" in data   # renamed from 'confidence'
         assert "iteration_count" in data
         assert "timestamp" in data
 
@@ -157,11 +157,18 @@ class TestQueryStreamEndpoint:
     def _make_sse_generator(self, query="What is diabetes?"):
         """Build an async generator that yields realistic SSE events."""
         answer = "Diabetes symptoms include thirst."
+        source_quality = {
+            "tier": "verified_corpus",
+            "label": "Verified corpus (structured medical data)",
+            "is_relevant": True,
+            "iterations": 1,
+            "disclaimer": "Source quality reflects retrieval origin, not answer correctness.",
+        }
         events = [
             f'data: {json.dumps({"type": "meta", "source": "Medical Q&A Collection", "source_info": {"routing": "medical_knowledge", "reason": "Routed"}, "relevance": {"is_relevant": True}, "context": "ctx"})}\n\n',
             f'data: {json.dumps({"type": "token", "token": "Diabetes "})}\n\n',
             f'data: {json.dumps({"type": "token", "token": "symptoms."})}\n\n',
-            f'data: {json.dumps({"type": "done", "answer": answer, "confidence": 0.90, "iteration_count": 1, "timestamp": "2024-01-01T00:00:00"})}\n\n',
+            f'data: {json.dumps({"type": "done", "answer": answer, "source_quality": source_quality, "iteration_count": 1, "timestamp": "2024-01-01T00:00:00"})}\n\n',
         ]
 
         async def _gen():

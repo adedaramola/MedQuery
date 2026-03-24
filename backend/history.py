@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, List
 
-from backend.config import MAX_HISTORY_TURNS
+from backend.config import MAX_HISTORY_TURNS, MAX_TOKENS_PER_TURN
 from backend.db import get_conn, put_conn
 
 logger = logging.getLogger(__name__)
@@ -30,11 +30,35 @@ def init_history_schema() -> None:
         put_conn(conn)
 
 
+def _truncate_to_token_budget(turns: List[dict], max_tokens: int) -> List[dict]:
+    """
+    Drop the oldest turns until the total estimated token count is under budget.
+
+    Uses a simple char-count heuristic (4 chars ≈ 1 token) to avoid importing
+    tiktoken at runtime. Always retains at least the most recent turn pair.
+    """
+    # Approximate: 4 chars per token
+    def _est_tokens(t: dict) -> int:
+        return max(1, len(t.get("content", "")) // 4)
+
+    total = sum(_est_tokens(t) for t in turns)
+    while total > max_tokens and len(turns) > 2:
+        dropped = turns.pop(0)
+        total -= _est_tokens(dropped)
+    return turns
+
+
 def get_history(conversation_id: Optional[str]) -> List[dict]:
-    """Return the last MAX_HISTORY_TURNS turns for a conversation."""
+    """
+    Return recent turns for a conversation, bounded by both MAX_HISTORY_TURNS
+    (turn count) and MAX_TOKENS_PER_TURN * MAX_HISTORY_TURNS (token budget).
+
+    Token-aware truncation prevents long prior turns from blowing out the
+    LLM context window even when turn count is within the limit.
+    """
     if not conversation_id:
         return []
-    limit = MAX_HISTORY_TURNS * 2
+    limit = MAX_HISTORY_TURNS * 2   # rows = 2× turns (user + assistant per turn)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -52,7 +76,9 @@ def get_history(conversation_id: Optional[str]) -> List[dict]:
                 (conversation_id, limit),
             )
             rows = cur.fetchall()
-        return [{"role": row[0], "content": row[1]} for row in rows]
+        turns = [{"role": row[0], "content": row[1]} for row in rows]
+        token_budget = MAX_HISTORY_TURNS * MAX_TOKENS_PER_TURN
+        return _truncate_to_token_budget(turns, token_budget)
     finally:
         put_conn(conn)
 

@@ -18,6 +18,18 @@ from unittest.mock import MagicMock
 # Minimal GraphState factory
 # ---------------------------------------------------------------------------
 
+_DEFAULT_SOURCE_QUALITY = {
+    "tier": "verified_corpus",
+    "label": "Verified corpus (structured medical data)",
+    "is_relevant": True,
+    "iterations": 1,
+    "disclaimer": (
+        "Source quality reflects the retrieval origin, not answer correctness. "
+        "Always verify medical information with a qualified healthcare professional."
+    ),
+}
+
+
 def make_state(**overrides) -> dict:
     """Return a fully-populated GraphState dict with sensible defaults."""
     base = {
@@ -32,7 +44,7 @@ def make_state(**overrides) -> dict:
         "relevance_reason": "Context is relevant",
         "iteration_count": 1,
         "history": [],
-        "confidence": 0.90,
+        "source_quality": _DEFAULT_SOURCE_QUALITY,
     }
     base.update(overrides)
     return base

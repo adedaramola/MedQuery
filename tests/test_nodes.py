@@ -117,38 +117,51 @@ class TestRetrieveDevice:
 # ---------------------------------------------------------------------------
 
 class TestWebSearch:
-    def test_populates_context_on_success(self, monkeypatch):
-        mock_results = [{"body": "COVID news article 1."}, {"body": "COVID news article 2."}]
-        mock_ddgs = MagicMock()
-        mock_ddgs.__enter__ = MagicMock(return_value=mock_ddgs)
-        mock_ddgs.__exit__ = MagicMock(return_value=False)
-        mock_ddgs.text.return_value = mock_results
-        monkeypatch.setattr("backend.pipeline.nodes.DDGS", MagicMock(return_value=mock_ddgs))
-
+    def test_populates_context_on_success_via_duckduckgo(self, monkeypatch):
+        """With no TAVILY_API_KEY set, falls back to DuckDuckGo."""
         from backend.pipeline import nodes
+        # Ensure Tavily is not used
+        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "")
+        monkeypatch.setattr(
+            nodes,
+            "_web_search_duckduckgo",
+            MagicMock(return_value=["COVID news article 1.", "COVID news article 2."]),
+        )
         state = make_state(query="Latest COVID news")
         result = nodes.web_search(state)
         assert "COVID news article 1." in result["context"]
         assert result["source"] == "Web Search (DuckDuckGo)"
 
-    def test_empty_results(self, monkeypatch):
-        mock_ddgs = MagicMock()
-        mock_ddgs.__enter__ = MagicMock(return_value=mock_ddgs)
-        mock_ddgs.__exit__ = MagicMock(return_value=False)
-        mock_ddgs.text.return_value = []
-        monkeypatch.setattr("backend.pipeline.nodes.DDGS", MagicMock(return_value=mock_ddgs))
-
+    def test_populates_context_on_success_via_tavily(self, monkeypatch):
+        """With TAVILY_API_KEY set, uses Tavily."""
         from backend.pipeline import nodes
+        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "tvly-fake-key")
+        monkeypatch.setattr(
+            nodes,
+            "_web_search_tavily",
+            MagicMock(return_value=["Tavily result 1.", "Tavily result 2."]),
+        )
+        state = make_state(query="Latest COVID news")
+        result = nodes.web_search(state)
+        assert "Tavily result 1." in result["context"]
+        assert result["source"] == "Web Search (Tavily)"
+
+    def test_empty_results(self, monkeypatch):
+        from backend.pipeline import nodes
+        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "")
+        monkeypatch.setattr(nodes, "_web_search_duckduckgo", MagicMock(return_value=[]))
         state = make_state(query="very obscure query")
         result = nodes.web_search(state)
         assert result["context"] == "No results found"
 
     def test_handles_exception_gracefully(self, monkeypatch):
+        from backend.pipeline import nodes
+        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "")
         monkeypatch.setattr(
-            "backend.pipeline.nodes.DDGS",
+            nodes,
+            "_web_search_duckduckgo",
             MagicMock(side_effect=RuntimeError("Network error")),
         )
-        from backend.pipeline import nodes
         state = make_state()
         result = nodes.web_search(state)
         assert "Search error" in result["context"]
@@ -261,7 +274,9 @@ class TestGenerate:
         state = make_state(prompt="Answer the question about diabetes.")
         result = nodes.generate(state)
         assert result["response"] == "Generated answer."
-        assert 0.0 <= result["confidence"] <= 1.0
+        # source_quality is now a dict descriptor, not a float
+        assert isinstance(result["source_quality"], dict)
+        assert "tier" in result["source_quality"]
 
     def test_handles_llm_error(self, monkeypatch):
         from backend.pipeline import nodes
@@ -269,7 +284,7 @@ class TestGenerate:
         state = make_state(prompt="Some prompt")
         result = nodes.generate(state)
         assert "Error generating response" in result["response"]
-        assert result["confidence"] == 0.0
+        assert result["source_quality"] is None
 
 
 # ---------------------------------------------------------------------------

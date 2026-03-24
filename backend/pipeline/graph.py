@@ -1,14 +1,13 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Optional, List
 
-from openai import OpenAI
 from langgraph.graph import StateGraph, START, END
 
-from backend.config import OPENAI_API_KEY, LLM_MODEL
+from backend.llm import stream_llm_response
 from backend.models import GraphState
 from backend.pipeline.nodes import (
     router_node, route_decision,
@@ -16,11 +15,9 @@ from backend.pipeline.nodes import (
     check_relevance, relevance_decision,
     augment, generate,
 )
-from backend.pipeline.state import compute_confidence
+from backend.pipeline.state import compute_source_quality
 
 logger = logging.getLogger(__name__)
-
-_openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 @lru_cache(maxsize=1)
@@ -104,25 +101,16 @@ async def stream_rag_response(question: str, history: Optional[List[dict]] = Non
         yield f"data: {json.dumps(meta)}\n\n"
 
         full_response = ""
-        stream = _openai_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[{"role": "user", "content": state["prompt"]}],
-            temperature=0.5,
-            max_tokens=500,
-            stream=True,
-        )
-        for chunk in stream:
-            token = chunk.choices[0].delta.content
-            if token:
-                full_response += token
-                yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
+        for token in stream_llm_response(state["prompt"], temperature=0.5, max_tokens=500):
+            full_response += token
+            yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
 
         done = {
             "type": "done",
             "answer": full_response.strip(),
-            "confidence": compute_confidence(state),
+            "source_quality": compute_source_quality(state),
             "iteration_count": state["iteration_count"],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         yield f"data: {json.dumps(done)}\n\n"
 

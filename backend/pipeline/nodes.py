@@ -1,31 +1,35 @@
 import logging
 from typing import List
 
-from openai import OpenAI
-from duckduckgo_search import DDGS
-
-from backend.config import OPENAI_API_KEY, LLM_MODEL, MAX_ITERATIONS
+from backend.config import MAX_ITERATIONS, TAVILY_API_KEY
+from backend.llm import get_llm_response
 from backend.models import GraphState
 from backend.vector_store import query_qna, query_device
-from backend.pipeline.state import compute_confidence
+from backend.pipeline.state import compute_source_quality
 
 logger = logging.getLogger(__name__)
 
-_openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+def _web_search_tavily(query: str, max_results: int = 3) -> list[str]:
+    """Search via Tavily API (production web search)."""
+    import requests as _requests
+    resp = _requests.post(
+        "https://api.tavily.com/search",
+        json={"api_key": TAVILY_API_KEY, "query": query, "max_results": max_results},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    results = resp.json().get("results", [])
+    return [r.get("content", "") for r in results if r.get("content")]
 
 
-def get_llm_response(prompt: str, temperature: float = 0.5) -> str:
-    try:
-        response = _openai_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=500,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logger.error(f"LLM error: {e}")
-        raise
+def _web_search_duckduckgo(query: str, max_results: int = 3) -> list[str]:
+    """DuckDuckGo fallback — development only, may be rate-limited in production."""
+    from duckduckgo_search import DDGS
+    with DDGS() as ddgs:
+        results = list(ddgs.text(query, max_results=max_results))
+    return [r["body"] for r in results if r.get("body")]
+
 
 
 def router_node(state: GraphState) -> GraphState:
@@ -81,11 +85,17 @@ def retrieve_device(state: GraphState) -> GraphState:
 
 def web_search(state: GraphState) -> GraphState:
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(state["query"], max_results=3))
-        state["context"] = "\n".join(r["body"] for r in results) if results else "No results found"
-        state["source"] = "Web Search (DuckDuckGo)"
-        logger.info("Web search completed")
+        if TAVILY_API_KEY:
+            snippets = _web_search_tavily(state["query"])
+            provider = "Tavily"
+        else:
+            logger.warning("TAVILY_API_KEY not set — falling back to DuckDuckGo (dev only)")
+            snippets = _web_search_duckduckgo(state["query"])
+            provider = "DuckDuckGo"
+
+        state["context"] = "\n".join(snippets) if snippets else "No results found"
+        state["source"] = f"Web Search ({provider})"
+        logger.info(f"Web search completed via {provider}")
         return state
     except Exception as e:
         logger.error(f"Web search error: {e}")
@@ -153,11 +163,11 @@ Answer:"""
 def generate(state: GraphState) -> GraphState:
     try:
         state["response"] = get_llm_response(state["prompt"])
-        state["confidence"] = compute_confidence(state)
-        logger.info(f"Answer generated (confidence: {state['confidence']:.0%})")
+        state["source_quality"] = compute_source_quality(state)
+        logger.info(f"Answer generated (source tier: {state['source_quality']['tier']})")
         return state
     except Exception as e:
         logger.error(f"Generation error: {e}")
         state["response"] = f"Error generating response: {e}"
-        state["confidence"] = 0.0
+        state["source_quality"] = None
         return state

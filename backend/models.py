@@ -18,6 +18,18 @@ class RelevanceInfo(BaseModel):
     reason: Optional[str] = None
 
 
+class SourceQualityInfo(BaseModel):
+    """
+    Describes the trustworthiness of the retrieval *source*.
+    This is NOT a confidence score for answer correctness.
+    """
+    tier: str
+    label: str
+    is_relevant: bool
+    iterations: int
+    disclaimer: str
+
+
 class QueryResponse(BaseModel):
     query: str
     answer: str
@@ -26,7 +38,8 @@ class QueryResponse(BaseModel):
     relevance: RelevanceInfo
     context: str
     iteration_count: int
-    confidence: float
+    # Renamed from 'confidence': describes source origin, not answer correctness.
+    source_quality: Optional[SourceQualityInfo] = None
     timestamp: str
     conversation_id: Optional[str] = None
 
@@ -50,4 +63,4 @@ class GraphState(TypedDict):
     relevance_reason: Optional[str]
     iteration_count: int
     history: List[dict]
-    confidence: float
+    source_quality: Optional[dict]  # replaces 'confidence'; see pipeline/state.py

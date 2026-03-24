@@ -158,31 +158,69 @@ def _upsert(table: str, ids: List[str], docs: List[str], metas: List[dict]) -> N
 def ingest_data(
     qa_csv: str = "data/medical_q_n_a.csv",
     device_csv: str = "data/medical_device_manuals_dataset.csv",
+    pubmed_csv: str = "data/medical_pubmed.csv",
+    fda_csv: str = "data/medical_fda_labels.csv",
     sample_size: int = 500,
 ) -> dict:
+    """
+    Ingest Q&A and device data.
+
+    Data priority:
+      1. data/medical_pubmed.csv  — real PubMed abstracts (run data/fetch_real_data.py first)
+      2. data/medical_q_n_a.csv   — synthetic fallback (clearly labelled)
+      3. data/medical_fda_labels.csv — real FDA drug labels
+      4. data/medical_device_manuals_dataset.csv — synthetic fallback
+
+    If both a real CSV and a synthetic CSV exist, BOTH are ingested so the
+    real data enriches rather than replaces the structured device knowledge.
+    """
     counts = {"qa": 0, "device": 0}
 
+    # --- Q&A: prefer real PubMed, supplement with synthetic ---
+    qa_sources = []
+    if os.path.exists(pubmed_csv):
+        qa_sources.append((pubmed_csv, "PubMed"))
     if os.path.exists(qa_csv):
-        df_qa = pd.read_csv(qa_csv)
+        qa_sources.append((qa_csv, "synthetic"))
+    if not qa_sources:
+        logger.warning("No Q&A CSV found. Run data/fetch_real_data.py to generate real data.")
+
+    for src_path, src_label in qa_sources:
+        df_qa = pd.read_csv(src_path)
+        if src_label == "synthetic":
+            # Surface the synthetic origin in metadata so the system knows
+            df_qa["source_label"] = "SYNTHETIC — do not rely on for clinical decisions"
         df_qa = df_qa.drop_duplicates(subset=["Question"]).reset_index(drop=True)
         df_qa = df_qa.sample(min(sample_size, len(df_qa)), random_state=42)
         df_qa["combined_text"] = (
             "Q: " + df_qa["Question"].astype(str) + " | "
             "A: " + df_qa["Answer"].astype(str) + " | "
-            "Type: " + df_qa.get("qtype", "General").astype(str)
+            "Type: " + df_qa.get("qtype", pd.Series(["General"] * len(df_qa))).astype(str)
         )
-        ids = [hashlib.md5(q.encode()).hexdigest() for q in df_qa["Question"]]
+        # Prefix IDs with source label to avoid cross-source collisions
+        ids = [hashlib.md5(f"{src_label}:{q}".encode()).hexdigest() for q in df_qa["Question"]]
         _upsert(
             "medical_qna",
             ids=ids,
             docs=df_qa["combined_text"].tolist(),
             metas=df_qa.to_dict(orient="records"),
         )
-        counts["qa"] = len(df_qa)
-        logger.info(f"Ingested {counts['qa']} Q&A records")
+        counts["qa"] += len(df_qa)
+        logger.info(f"Ingested {len(df_qa)} Q&A records from {src_label} ({src_path})")
 
+    # --- Device / drug labels: prefer real FDA labels, supplement with synthetic ---
+    device_sources = []
+    if os.path.exists(fda_csv):
+        device_sources.append((fda_csv, "FDA"))
     if os.path.exists(device_csv):
-        df_dev = pd.read_csv(device_csv)
+        device_sources.append((device_csv, "synthetic"))
+    if not device_sources:
+        logger.warning("No device CSV found. Run data/fetch_real_data.py to generate real data.")
+
+    for src_path, src_label in device_sources:
+        df_dev = pd.read_csv(src_path)
+        if src_label == "synthetic":
+            df_dev["source_label"] = "SYNTHETIC — do not rely on for clinical decisions"
         df_dev = df_dev.drop_duplicates(subset=["Device_Name", "Model_Number"]).reset_index(drop=True)
         df_dev = df_dev.sample(min(sample_size, len(df_dev)), random_state=42)
         df_dev["combined_text"] = (
@@ -191,7 +229,7 @@ def ingest_data(
             "Indications: " + df_dev.get("Indications_for_Use", "N/A").astype(str) + " | "
             "Contraindications: " + df_dev.get("Contraindications", "N/A").astype(str)
         )
-        ids = [hashlib.md5(f"{r['Device_Name']}{r['Model_Number']}".encode()).hexdigest()
+        ids = [hashlib.md5(f"{src_label}:{r['Device_Name']}{r['Model_Number']}".encode()).hexdigest()
                for _, r in df_dev.iterrows()]
         _upsert(
             "medical_device",
@@ -199,7 +237,7 @@ def ingest_data(
             docs=df_dev["combined_text"].tolist(),
             metas=df_dev.to_dict(orient="records"),
         )
-        counts["device"] = len(df_dev)
-        logger.info(f"Ingested {counts['device']} Device records")
+        counts["device"] += len(df_dev)
+        logger.info(f"Ingested {len(df_dev)} device records from {src_label} ({src_path})")
 
     return counts
