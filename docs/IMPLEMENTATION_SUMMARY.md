@@ -2,7 +2,7 @@
 
 ## What Was Built
 
-A **production-grade Agentic RAG system** for medical knowledge retrieval, with LangGraph-based dynamic routing, streaming responses, and full AWS deployment via Terraform.
+A **production-grade Agentic RAG system** for medical knowledge retrieval, with LangGraph-based dynamic routing, safety guardrails, streaming responses, real medical data ingestion, and full AWS deployment via Terraform.
 
 ---
 
@@ -12,17 +12,19 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 
 | File | Purpose |
 |------|---------|
-| `config.py` | Constants, env vars, JSON log formatter |
-| `models.py` | Pydantic request/response schemas + `GraphState` TypedDict |
+| `config.py` | Constants, env vars (`TAVILY_API_KEY`, `MAX_TOKENS_PER_TURN`, `MAX_HISTORY_TURNS`), JSON log formatter |
+| `models.py` | Pydantic schemas (`QueryResponse` with `source_quality`; `SourceQualityInfo`) + `GraphState` TypedDict |
 | `auth.py` | `require_api_key` FastAPI dependency — checks `X-API-Key` header |
 | `limiter.py` | Shared `slowapi` rate-limiter (20 req/min per IP) |
+| `llm.py` | LLM provider abstraction — `get_llm_response()` and `stream_llm_response()` work across OpenAI, Anthropic, and any OpenAI-compatible endpoint |
+| `safety.py` | Safety guardrails: `check_safety()` classifies queries as `BLOCKED` / `FLAGGED` / `SAFE`; `append_safety_disclaimer()` appends medical disclaimers to flagged responses |
 | `db.py` | psycopg2 `ThreadedConnectionPool`; `get_conn()` (plain) and `get_vector_conn()` (pgvector adapter registered) |
-| `history.py` | PostgreSQL conversation store (`conversation_turns` table) |
-| `vector_store.py` | pgvector tables with HNSW indexes; `init_schema()`, `query_qna()`, `query_device()`, `ingest_data()` |
-| `pipeline/state.py` | `compute_confidence()` heuristic — no extra LLM call |
-| `pipeline/nodes.py` | All LangGraph node functions: `router_node`, `retrieve_clinical`, `retrieve_device`, `web_search`, `check_relevance`, `augment`, `generate` |
-| `pipeline/graph.py` | `build_agentic_rag()` graph builder; `query_rag()` executor; `stream_rag_response()` SSE generator |
-| `routes/query.py` | `POST /api/query` and `POST /api/query/stream` (auth + rate limited) |
+| `history.py` | PostgreSQL conversation store with turn-count and token-aware truncation (`_truncate_to_token_budget()`) |
+| `vector_store.py` | pgvector tables with HNSW indexes; `ingest_data()` prioritises real CSVs (PubMed, FDA) over synthetic fallbacks |
+| `pipeline/state.py` | `compute_source_quality()` — returns tier/label/disclaimer dict; replaces the old heuristic confidence float |
+| `pipeline/nodes.py` | All LangGraph nodes; `web_search` uses Tavily when `TAVILY_API_KEY` is set, falls back to DuckDuckGo; `get_llm_response` imported from `backend/llm.py` |
+| `pipeline/graph.py` | `build_agentic_rag()` graph builder; `query_rag()` executor; `stream_rag_response()` SSE generator using `stream_llm_response()` |
+| `routes/query.py` | Safety gate before all queries; `POST /api/query`; `POST /api/query/stream` (auth + rate limited) |
 | `routes/health.py` | `GET /api/health`, `POST /api/ingest`, `GET /` |
 | `main.py` | FastAPI app init, CORS middleware, rate limiter mount, request-ID middleware |
 
@@ -30,26 +32,47 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 
 | File | Purpose |
 |------|---------|
-| `agentic_rag_app.jsx` | Full chat UI: SSE stream consumption, message state, routing badges, confidence scores, streaming cursor |
+| `App.jsx` | Full chat UI: SSE stream consumption, message state, source quality badge, streaming cursor |
+| `components/MessageBubble.jsx` | Renders individual messages with source tier badge and safety disclaimer display |
+| `components/Header.jsx` | App header with backend health status indicator |
+| `components/TypingIndicator.jsx` | Animated typing indicator during streaming |
 
 ### Data (`data/`)
 
 | File | Purpose |
 |------|---------|
-| `generate_data.py` | Generates synthetic datasets using all `CONDITIONS × QNA_TEMPLATES` combinations for unique rows |
-| `medical_q_n_a.csv` | 1000-row Q&A dataset (~298 unique pairs after deduplication) |
-| `medical_device_manuals_dataset.csv` | 1000-row device manual dataset |
+| `fetch_real_data.py` | Downloads real medical data from PubMed E-utilities and openFDA drug labels APIs; outputs `medical_pubmed.csv` and `medical_fda_labels.csv` |
+| `generate_data.py` | Generates synthetic fallback datasets using `CONDITIONS × QNA_TEMPLATES` combinations |
+| `medical_q_n_a.csv` | Synthetic Q&A dataset — used only when `medical_pubmed.csv` is absent |
+| `medical_device_manuals_dataset.csv` | Synthetic device dataset — used only when `medical_fda_labels.csv` is absent |
+
+### Migrations (`migrations/`)
+
+| File | Purpose |
+|------|---------|
+| `env.py` | Alembic environment — reads `DATABASE_URL` from environment |
+| `script.py.mako` | Template for new migration files |
+| `versions/20240101_0001_initial_schema.py` | Creates `medical_qna`, `medical_device`, `conversation_turns` tables and HNSW indexes; includes `downgrade()` |
+
+### Scripts (`scripts/`)
+
+| File | Purpose |
+|------|---------|
+| `smoke_test.py` | Interactive CLI for manual backend testing (health check, queries, ingest) — development use only |
 
 ### Infrastructure
 
 | File | Purpose |
 |------|---------|
-| `requirements.txt` | Python dependencies |
-| `package.json` | Node.js deps + `postinstall` script (creates `.venv` + pip install) |
-| `.env.example` | Secrets template |
-| `.env.production` | Frontend build env — sets `REACT_APP_API_URL` to the ALB URL before `npm run build` |
-| `Dockerfile` | Backend container image (uvicorn entrypoint, `linux/amd64`) |
-| `docker-compose.yml` | Local full-stack orchestration |
+| `requirements.txt` | Python dependencies (pinned): LangGraph 0.3.5, LangChain 0.3.13, `tavily-python`, `alembic` |
+| `package.json` | Node.js deps |
+| `.env.example` | Fully documented secrets template: `OPENAI_API_KEY`, `DATABASE_URL`, `TAVILY_API_KEY`, `ALLOWED_ORIGINS`, `API_KEY`, `MAX_HISTORY_TURNS`, `NCBI_API_KEY` |
+| `Dockerfile` | Backend container image (uvicorn, `linux/amd64`) |
+| `Dockerfile.frontend` | Multi-stage frontend build: Node 18 → nginx 1.25; builds static bundle |
+| `nginx.conf` | nginx: SPA fallback routing, `/api/*` proxy to backend, SSE buffering disabled |
+| `docker-compose.yml` | Local full-stack: backend (health-checked) + frontend (nginx, depends on backend) |
+| `alembic.ini` | Alembic configuration |
+| `.github/workflows/ci.yml` | CI/CD: test (pgvector container), build, docker, ECS deploy |
 
 ### Terraform (`terraform/`)
 
@@ -71,38 +94,53 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 
 ## Agentic Pipeline
 
-The pipeline is a LangGraph directed graph with conditional edges:
-
 ```
-START → Router → [retrieve_clinical | retrieve_device | web_search]
+safety_check (backend/safety.py)
+    ├── BLOCKED  → crisis response (pipeline never runs)
+    └── SAFE / FLAGGED →
+          ↓
+        Router → [retrieve_clinical | retrieve_device | web_search]
                            ↓
-              check_relevance
-                ├── relevant   → augment → generate → END
-                └── irrelevant → web_search → check_relevance (max 3 loops)
+                  check_relevance
+                    ├── relevant   → augment → generate → END
+                    └── irrelevant → web_search → check_relevance (max 3 loops)
 ```
 
 - **router** and **check_relevance** both use `temperature=0` for deterministic decisions
-- **web_search** uses DuckDuckGo — no API key required
+- **web_search** uses Tavily API in production; falls back to DuckDuckGo when `TAVILY_API_KEY` is unset
 - The loop cap (`MAX_ITERATIONS=3`) prevents runaway retries
+- All LLM calls routed through `backend/llm.py` — no direct SDK imports in pipeline nodes
 
 ---
 
 ## Key Design Decisions
 
+**Safety before pipeline**
+`check_safety()` runs synchronously before any DB or LLM call. BLOCKED queries never reach the pipeline — cost is zero and there is no risk of an unsafe answer being generated.
+
+**Source quality, not confidence**
+The old `compute_confidence()` heuristic (90% for Q&A, 85% for devices, etc.) was replaced with `compute_source_quality()`, which returns a structured descriptor with `tier`, `label`, `is_relevant`, `iterations`, and a mandatory `disclaimer`. The UI shows the tier rather than a percentage.
+
+**Real data priority**
+`ingest_data()` checks for `medical_pubmed.csv` and `medical_fda_labels.csv` first. If present, they are ingested alongside (not instead of) the synthetic fallbacks. Synthetic rows carry a `source_label = "SYNTHETIC — do not rely on for clinical decisions"` metadata tag.
+
+**LLM provider abstraction**
+`backend/llm.py` is the only place that imports an LLM SDK. Changing `LLM_PROVIDER` in `.env` switches the entire system to a different provider without touching any pipeline or route code.
+
 **pgvector connection split**
 `get_conn()` returns a plain connection for schema DDL. `get_vector_conn()` calls `register_vector(conn)` for vector operations. This ensures the pgvector adapter is registered only after `CREATE EXTENSION vector` has run.
 
 **Stable upsert IDs**
-Vector store IDs are MD5 hashes of the source text (`hashlib.md5(question.encode()).hexdigest()`). Re-ingesting the same data is safe — rows are updated in place via `ON CONFLICT (id) DO UPDATE`.
+Vector store IDs are MD5 hashes of `"{source_label}:{question}"`. Re-ingesting the same data is safe — rows are updated in place via `ON CONFLICT (id) DO UPDATE`. The source label prefix prevents ID collisions between real and synthetic rows.
 
-**Data generation uniqueness**
-`generate_data.py` uses nested loops over all `CONDITIONS × QNA_TEMPLATES` combinations, producing ~298 unique Q&A pairs. Ingest also calls `drop_duplicates()` as a safety net.
+**Token-aware history**
+History is bounded by both turn count (`MAX_HISTORY_TURNS`) and an estimated token budget (`MAX_HISTORY_TURNS × MAX_TOKENS_PER_TURN`). The oldest turns are dropped first, preserving the most recent context even for verbose conversations.
 
-**Frontend API URL baked at build time**
-`REACT_APP_API_URL` must be set in `.env.production` before running `npm run build`. React's `process.env` substitution happens at compile time, not runtime. After updating S3, invalidate the CloudFront cache to push the new bundle to edge nodes.
+**Production frontend container**
+`Dockerfile.frontend` uses a two-stage build: Node 18 compiles the React bundle, then nginx 1.25 serves it. No `npm install` at container startup. `nginx.conf` disables proxy buffering for `/api/*` so SSE tokens stream immediately.
 
-**Docker platform**
-Always build the backend image with `--platform linux/amd64`. ECS Fargate runs x86_64 regardless of the build machine architecture.
+**Alembic for schema management**
+Schema changes go through Alembic migrations instead of ad-hoc `CREATE TABLE IF NOT EXISTS` calls. The initial migration (`0001`) creates all three tables and can be rolled back with `alembic downgrade -1`.
 
 ---
 
@@ -111,29 +149,33 @@ Always build the backend image with `--platform linux/amd64`. ECS Fargate runs x
 All constants in `backend/config.py` — override with environment variables:
 
 ```python
-LLM_MODEL         = "gpt-4o-mini"
-EMBED_MODEL       = "text-embedding-3-small"
-DATABASE_URL      = "postgresql://localhost/medical_rag"
-N_RESULTS         = 5
-MAX_ITERATIONS    = 3
-MAX_HISTORY_TURNS = 10
-ALLOWED_ORIGINS   = "http://localhost:3000"
-API_KEY           = ""
+LLM_MODEL           = "gpt-4o-mini"
+EMBED_MODEL         = "text-embedding-3-small"
+DATABASE_URL        = "postgresql://localhost/medical_rag"
+N_RESULTS           = 5
+MAX_ITERATIONS      = 3
+MAX_HISTORY_TURNS   = 10       # also configurable via MAX_HISTORY_TURNS env var
+MAX_TOKENS_PER_TURN = 300      # chars-to-token ratio ≈ 4:1
+ALLOWED_ORIGINS     = "http://localhost:3000"
+API_KEY             = ""
+TAVILY_API_KEY      = ""       # set to enable Tavily; unset = DuckDuckGo fallback
 ```
 
 ---
 
-## Common Customizations
+## Common Customisations
 
 | Goal | Where to change |
 |------|----------------|
+| Switch LLM provider | `LLM_PROVIDER` in `.env` + install provider SDK |
 | Switch LLM model | `LLM_MODEL` in `backend/config.py` |
+| Add a safety pattern | `_BLOCKED_PATTERNS` or `_FLAGGED_PATTERNS` in `backend/safety.py` |
 | Retrieve more documents | `N_RESULTS` in `backend/config.py` |
 | Change routing logic | `router_node()` in `backend/pipeline/nodes.py` |
 | Change answer prompt | `augment()` in `backend/pipeline/nodes.py` |
 | Add a new SSE event type | `stream_rag_response()` in `backend/pipeline/graph.py` |
-| Add a new UI component | `src/components/` |
 | Add a new data source | New table in `vector_store.py` + new node in `nodes.py` + new edge in `graph.py` |
+| Add a migration | `alembic revision -m "description"` then edit the generated file |
 
 ---
 
@@ -143,5 +185,5 @@ API_KEY           = ""
 |------|---------|
 | [QUICKSTART.md](QUICKSTART.md) | 5-minute local setup |
 | [SETUP.md](SETUP.md) | Full setup + AWS deployment |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, data flow, LangGraph workflow |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, data flow, LangGraph workflow, safety layer |
 | http://localhost:8000/docs | Interactive API documentation (Swagger UI) |
