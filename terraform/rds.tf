@@ -16,13 +16,13 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "postgres" {
   identifier = "${var.app_name}-postgres"
 
-  engine               = "postgres"
-  engine_version       = "16.13"
-  instance_class       = var.db_instance_class
-  allocated_storage    = 20
-  max_allocated_storage = 100  # auto-scaling up to 100 GiB
-  storage_type         = "gp3"
-  storage_encrypted    = true
+  engine                = "postgres"
+  engine_version        = "16.13"
+  instance_class        = var.db_instance_class
+  allocated_storage     = 20
+  max_allocated_storage = 100 # auto-scaling up to 100 GiB
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   db_name  = "medical_rag"
   username = "medical_rag_user"
@@ -40,12 +40,12 @@ resource "aws_db_instance" "postgres" {
   maintenance_window      = "sun:04:00-sun:05:00"
 
   # Availability
-  multi_az            = false  # set to true for production HA
+  multi_az            = false # set to true for production HA
   publicly_accessible = false
 
   # Protect against accidental deletion
-  deletion_protection      = true
-  skip_final_snapshot      = false
+  deletion_protection       = true
+  skip_final_snapshot       = false
   final_snapshot_identifier = "${var.app_name}-postgres-final-snapshot"
 
   tags = { Name = "${var.app_name}-postgres" }

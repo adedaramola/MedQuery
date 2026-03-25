@@ -42,11 +42,11 @@ resource "aws_s3_bucket_policy" "frontend" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "AllowCloudFrontServicePrincipal"
-      Effect = "Allow"
+      Sid       = "AllowCloudFrontServicePrincipal"
+      Effect    = "Allow"
       Principal = { Service = "cloudfront.amazonaws.com" }
-      Action   = "s3:GetObject"
-      Resource = "${aws_s3_bucket.frontend.arn}/*"
+      Action    = "s3:GetObject"
+      Resource  = "${aws_s3_bucket.frontend.arn}/*"
       Condition = {
         StringEquals = {
           "AWS:SourceArn" = aws_cloudfront_distribution.frontend.arn
@@ -137,15 +137,15 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   # Return index.html for 403/404 so React client-side routing works
   custom_error_response {
-    error_code            = 403
-    response_code         = 200
-    response_page_path    = "/index.html"
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
   }
 
   custom_error_response {
-    error_code            = 404
-    response_code         = 200
-    response_page_path    = "/index.html"
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
   }
 
   restrictions {

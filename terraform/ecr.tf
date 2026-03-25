@@ -13,18 +13,18 @@ resource "aws_ecr_repository" "backend" {
   tags = { Name = "${var.app_name}-backend" }
 }
 
-# Keep only the 10 most recent images to control storage costs
+# Keep only the 2 most recent images to control storage costs
 resource "aws_ecr_lifecycle_policy" "backend" {
   repository = aws_ecr_repository.backend.name
 
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 10 images"
+      description  = "Keep last 2 images"
       selection = {
         tagStatus   = "any"
         countType   = "imageCountMoreThan"
-        countNumber = 10
+        countNumber = 2
       }
       action = { type = "expire" }
     }]
