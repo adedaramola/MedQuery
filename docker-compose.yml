@@ -1,21 +1,47 @@
-version: '3.8'
-
 services:
+
+  # ── PostgreSQL + pgvector ──────────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: medical-rag-db
+    environment:
+      POSTGRES_DB:       medical_rag
+      POSTGRES_USER:     medical_rag_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medical_rag_user -d medical_rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Backend (FastAPI + LangGraph) ─────────────────────────────────────────
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: medical-rag-backend
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8000:8000"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - DATABASE_URL=${DATABASE_URL}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:80}
-      - API_KEY=${API_KEY:-}
-      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
-      - MAX_HISTORY_TURNS=${MAX_HISTORY_TURNS:-10}
-      - PYTHONUNBUFFERED=1
+      DATABASE_URL:      postgresql://medical_rag_user:${POSTGRES_PASSWORD:-changeme}@db:5432/medical_rag
+      OPENAI_API_KEY:    ${OPENAI_API_KEY}
+      TAVILY_API_KEY:    ${TAVILY_API_KEY:-}
+      API_KEY:           ${API_KEY:-}
+      ALLOWED_ORIGINS:   ${ALLOWED_ORIGINS:-http://localhost}
+      MAX_HISTORY_TURNS: ${MAX_HISTORY_TURNS:-10}
+      LLM_PROVIDER:      ${LLM_PROVIDER:-openai}
+      LLM_BASE_URL:      ${LLM_BASE_URL:-}
+      NCBI_API_KEY:      ${NCBI_API_KEY:-}
+      PYTHONUNBUFFERED:  "1"
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
@@ -26,18 +52,21 @@ services:
       retries: 3
       start_period: 40s
 
+  # ── Frontend (React → nginx) ───────────────────────────────────────────────
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        - REACT_APP_API_URL=http://localhost:8000
+        # In Docker, browser hits nginx on port 80; nginx proxies /api/ to backend.
+        # Use http://localhost (no port) so requests go through nginx, not directly to 8000.
+        REACT_APP_API_URL: "http://localhost"
     container_name: medical-rag-frontend
-    ports:
-      - "80:80"
     depends_on:
       backend:
         condition: service_healthy
+    ports:
+      - "80:80"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/nginx-health"]
@@ -46,4 +75,5 @@ services:
       retries: 3
 
 volumes:
+  pgdata:
   logs:

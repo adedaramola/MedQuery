@@ -150,7 +150,7 @@ export default function App() {
             onBlur={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}
           >
             <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKey}
-              placeholder="Ask about medical conditions, devices, or recent news…"
+              placeholder="Ask about medical conditions or devices…"
               rows={1} disabled={apiStatus === "disconnected" || loading}
               style={{ flex: 1, background: "transparent", border: "none", color: "#111827", fontSize: 14, fontFamily: "inherit", lineHeight: 1.5, maxHeight: 120, overflowY: "auto", opacity: apiStatus === "disconnected" ? 0.5 : 1 }}
             />

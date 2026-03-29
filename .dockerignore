@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Environment — never bake secrets into the image
+.env
+.env.*
+
+# Node
+node_modules/
+npm-debug.log*
+
+# React build output (built inside Docker)
+build/
+
+# Terraform
+terraform/
+*.tfstate
+*.tfvars
+
+# Git
+.git/
+.gitignore
+
+# Docs
+docs/
+
+# Tests
+tests/
+
+# Logs
+logs/
+*.log
+
+# macOS
+.DS_Store

@@ -4,7 +4,7 @@
 
 ```bash
 # 1. Install deps & configure
-cp .env.example .env   # fill in OPENAI_API_KEY and DATABASE_URL
+cp .env.example .env   # fill in OPENAI_API_KEY and POSTGRES_PASSWORD
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 npm ci --ignore-scripts
@@ -12,7 +12,7 @@ npm ci --ignore-scripts
 # 2. Run database migrations
 alembic upgrade head
 
-# 3. Fetch real data (optional but recommended)
+# 3. Fetch real data (required — no synthetic fallback)
 python data/fetch_real_data.py
 
 # 4. Terminal 1: Backend
@@ -22,7 +22,11 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 npm start
 
 # 6. Ingest data
-curl -X POST http://localhost:8000/api/ingest
+python -c "
+from dotenv import load_dotenv; load_dotenv()
+from backend.vector_store import ingest_data
+print(ingest_data(qa_csv='', device_csv='', pubmed_csv='data/medical_pubmed.csv', fda_csv='data/medical_fda_labels.csv', sample_size=786))
+"
 
 # Open http://localhost:3000
 ```
@@ -79,7 +83,7 @@ npm ci --ignore-scripts
 cp .env.example .env
 ```
 
-Edit `.env` — the minimum required fields:
+Edit `.env` — minimum required fields:
 ```
 OPENAI_API_KEY=sk-...
 DATABASE_URL=postgresql://<your-system-username>@localhost/medical_rag
@@ -91,6 +95,7 @@ TAVILY_API_KEY=tvly-...      # production web search (DuckDuckGo used if not set
 API_KEY=your-secret          # enables X-API-Key auth on query endpoints
 ALLOWED_ORIGINS=http://localhost:3000
 MAX_HISTORY_TURNS=10
+POSTGRES_PASSWORD=changeme   # used by Docker only; not needed for local dev
 ```
 
 > On macOS, `<your-system-username>` is the output of `whoami`. No password needed for a local PostgreSQL install.
@@ -103,17 +108,17 @@ alembic upgrade head
 
 This creates the `medical_qna`, `medical_device`, and `conversation_turns` tables with HNSW indexes.
 
-> If you are upgrading from a previous version that created tables on startup, Alembic's `CREATE TABLE IF NOT EXISTS` statements are safe to re-run.
-
-### 6. Fetch Real Data (Recommended)
+### 6. Fetch Real Data
 
 ```bash
 python data/fetch_real_data.py
 ```
 
-Downloads real medical abstracts from PubMed and drug labels from openFDA. Both APIs are free with no authentication required. Rate limits are respected automatically.
+Downloads real medical data from two free public APIs:
+- **PubMed E-utilities** → `data/medical_pubmed.csv` (786 abstracts across 20 topics)
+- **openFDA drug labels** → `data/medical_fda_labels.csv` (23 FDA-approved drug labels)
 
-If you skip this step, the system falls back to the synthetic datasets in `data/`.
+No API keys required. Rate limits are respected automatically.
 
 ### 7. Start the Backend
 
@@ -131,15 +136,18 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 ### 8. Ingest Data
 
 ```bash
-curl -X POST http://localhost:8000/api/ingest
+python -c "
+from dotenv import load_dotenv; load_dotenv()
+from backend.vector_store import ingest_data
+counts = ingest_data(qa_csv='', device_csv='', pubmed_csv='data/medical_pubmed.csv', fda_csv='data/medical_fda_labels.csv', sample_size=786)
+print(counts)
+"
 ```
 
-Expected response:
-```json
-{"status": "success", "qa_records": 520, "device_records": 275}
+Expected output:
 ```
-
-Record counts vary depending on whether real data was fetched.
+{'qa': 786, 'device': 23}
+```
 
 ### 9. Start the Frontend
 
@@ -174,7 +182,7 @@ Expected:
   "status": "healthy",
   "version": "1.0.0",
   "models": { "llm": "gpt-4o-mini", "embeddings": "text-embedding-3-small" },
-  "databases": { "qa_collection_count": 520, "device_collection_count": 275 }
+  "databases": { "qa_collection_count": 786, "device_collection_count": 23 }
 }
 ```
 
@@ -192,25 +200,41 @@ Expected:
 
 ---
 
-## Docker (Alternative)
+## Docker (Recommended for Full-Stack)
 
 ```bash
+cp .env.example .env   # fill in OPENAI_API_KEY and POSTGRES_PASSWORD
 docker compose up --build
 ```
 
-This builds the backend image and a production nginx frontend image, then starts both services. The frontend is served on port 80.
+This starts three services:
+- **`db`** — PostgreSQL 16 + pgvector (local Docker volume)
+- **`backend`** — FastAPI; runs `alembic upgrade head` automatically on startup
+- **`frontend`** — React + nginx on port 80; proxies `/api/*` to backend
 
-After services are healthy:
+Startup order: `db` (healthy) → `backend` (migrations + healthy) → `frontend`.
+
+After services are healthy, ingest real data once:
 ```bash
-curl -X POST http://localhost:8000/api/ingest
+docker compose exec backend python -c "
+from dotenv import load_dotenv; load_dotenv()
+from backend.vector_store import ingest_data
+counts = ingest_data(qa_csv='', device_csv='', pubmed_csv='data/medical_pubmed.csv', fda_csv='data/medical_fda_labels.csv', sample_size=786)
+print(counts)
+"
 ```
+
+Access:
+- **App**: http://localhost
+- **Backend API**: http://localhost:8000
+- **API docs**: http://localhost:8000/docs
 
 ---
 
 ## What You Get
 
 - **Backend API** at http://localhost:8000
-- **Frontend UI** at http://localhost:3000 (or http://localhost:80 via Docker)
+- **Frontend UI** at http://localhost:3000 (or http://localhost via Docker)
 - **API Documentation** at http://localhost:8000/docs
 - Streaming responses (token-by-token via SSE)
 - Source quality tier and routing badge on every response

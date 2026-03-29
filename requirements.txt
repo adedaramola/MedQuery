@@ -10,7 +10,7 @@ python-dotenv==1.0.1
 # ── LLM + agent framework ──────────────────────────────────────────────────
 # LangGraph 0.3.x (breaking change from 0.2.x; pinned for reproducibility)
 # LangChain 0.3.x is the compatible series for LangGraph 0.3
-openai==1.57.4
+openai==1.59.3
 langgraph==0.3.5
 langchain==0.3.13
 langchain-community==0.3.13

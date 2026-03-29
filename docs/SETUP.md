@@ -49,7 +49,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Node packages (frontend only — no postinstall Python hook)
+# Node packages (frontend only)
 npm ci --ignore-scripts
 ```
 
@@ -76,6 +76,9 @@ API_HOST=0.0.0.0
 API_PORT=8000
 API_LOG_LEVEL=info
 # NCBI_API_KEY=...           # raises PubMed rate limit from 3 to 10 req/s
+
+# Docker only (not needed for local dev)
+POSTGRES_PASSWORD=changeme   # password for the pgvector Docker container
 ```
 
 On macOS, `<your-system-username>` is the output of `whoami`. A local PostgreSQL install does not require a password.
@@ -93,19 +96,17 @@ To roll back:
 alembic downgrade -1
 ```
 
-### 6. Fetch Real Medical Data (Recommended)
+### 6. Fetch Real Medical Data
 
 ```bash
 python data/fetch_real_data.py
 ```
 
 Downloads:
-- **PubMed abstracts** via NCBI E-utilities (free, no auth) → `data/medical_pubmed.csv`
-- **FDA drug labels** via openFDA API (free, no auth) → `data/medical_fda_labels.csv`
+- **PubMed abstracts** via NCBI E-utilities (free, no auth) → `data/medical_pubmed.csv` (786 abstracts)
+- **FDA drug labels** via openFDA API (free, no auth) → `data/medical_fda_labels.csv` (23 drug labels)
 
-If you skip this step, the system falls back to synthetic datasets. Synthetic rows are tagged as such in ingested metadata.
-
-Optional flags:
+Optional flags to limit scope:
 ```bash
 python data/fetch_real_data.py --pubmed-queries 10 --pubmed-per-query 5 --fda-drugs 15
 ```
@@ -120,10 +121,15 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ### 8. Ingest Data
 
 ```bash
-curl -X POST http://localhost:8000/api/ingest
+python -c "
+from dotenv import load_dotenv; load_dotenv()
+from backend.vector_store import ingest_data
+counts = ingest_data(qa_csv='', device_csv='', pubmed_csv='data/medical_pubmed.csv', fda_csv='data/medical_fda_labels.csv', sample_size=786)
+print(counts)
+"
 ```
 
-The ingest endpoint automatically picks up all available CSVs in `data/`. Real data takes priority over synthetic fallbacks.
+Expected: `{'qa': 786, 'device': 23}`
 
 ### 9. Start the Frontend
 
@@ -148,24 +154,46 @@ All 85 tests are offline — no live database or API key needed. External calls 
 
 ## Docker Compose
 
-For a containerised local environment:
+Docker Compose starts a complete local stack including the database:
 
 ```bash
-cp .env.example .env   # fill in OPENAI_API_KEY and DATABASE_URL
+cp .env.example .env   # fill in OPENAI_API_KEY and POSTGRES_PASSWORD
 docker compose up --build
 ```
 
-The frontend (`Dockerfile.frontend`) builds a static nginx bundle — no `npm install` at runtime.
+Three services are started in dependency order:
 
-After services are healthy (the backend health check runs every 30s):
+| Service | Image | Port | Notes |
+|---------|-------|------|-------|
+| `db` | `pgvector/pgvector:pg16` | 5432 | Data persisted in `pgdata` Docker volume |
+| `backend` | built from `Dockerfile` | 8000 | Runs `alembic upgrade head` automatically via `scripts/docker-entrypoint.sh` |
+| `frontend` | built from `Dockerfile.frontend` | 80 | nginx serves React; proxies `/api/*` to backend |
+
+The startup sequence is: `db` healthy → `backend` healthy → `frontend`.
+
+After all services are healthy, ingest real data once:
 ```bash
-curl -X POST http://localhost:8000/api/ingest
+docker compose exec backend python -c "
+from dotenv import load_dotenv; load_dotenv()
+from backend.vector_store import ingest_data
+counts = ingest_data(qa_csv='', device_csv='', pubmed_csv='data/medical_pubmed.csv', fda_csv='data/medical_fda_labels.csv', sample_size=786)
+print(counts)
+"
 ```
 
 Access:
-- Frontend: http://localhost:80
+- App: http://localhost
 - Backend API: http://localhost:8000
 - API docs: http://localhost:8000/docs
+
+**Database authentication in Docker:**
+`POSTGRES_PASSWORD` in `.env` is used by both the `db` container (to initialise the PostgreSQL user) and by `backend` (in the `DATABASE_URL` injected by docker-compose). Change `changeme` to a strong password before sharing or deploying.
+
+**Stopping without losing data:**
+```bash
+docker compose down        # keeps pgdata volume intact
+docker compose down -v     # destroys pgdata volume — data lost
+```
 
 ---
 
@@ -226,12 +254,12 @@ aws ecs update-service --cluster $CLUSTER --service $SERVICE --force-new-deploym
 
 ### Step 3: Run Database Migrations on RDS
 
-Connect to the RDS instance (via a bastion or ECS exec) and run:
+The backend container runs `alembic upgrade head` automatically on startup via `scripts/docker-entrypoint.sh`. No manual migration step is needed on ECS. Alembic is idempotent — running it on every restart is safe.
+
+To run manually (e.g. via SSM Session Manager):
 ```bash
 DATABASE_URL="postgresql://..." alembic upgrade head
 ```
-
-Or use AWS Systems Manager Session Manager to reach the ECS task.
 
 ### Step 4: Build and Deploy the Frontend
 
@@ -259,6 +287,15 @@ Once the ECS task is healthy (check the ALB target group):
 ```bash
 BACKEND=$(cd terraform && terraform output -raw backend_url)
 curl -X POST ${BACKEND}/api/ingest
+```
+
+Or ingest only real data:
+```bash
+docker compose exec backend python -c "
+from dotenv import load_dotenv; load_dotenv()
+from backend.vector_store import ingest_data
+print(ingest_data(qa_csv='', device_csv='', pubmed_csv='data/medical_pubmed.csv', fda_csv='data/medical_fda_labels.csv', sample_size=786))
+"
 ```
 
 ### Step 6: Verify
@@ -353,14 +390,15 @@ LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Supported providers: `openai` (default), `anthropic`. Any OpenAI-compatible endpoint can be used by setting `LLM_BASE_URL`.
+Supported providers: `openai` (default), `anthropic`. Any OpenAI-compatible endpoint (Azure, Ollama, vLLM) can be used by setting `LLM_BASE_URL`. Leave `LLM_BASE_URL` empty or unset to use the official OpenAI endpoint — an empty string is treated as unset.
 
 ---
 
 ## Security Checklist
 
-- Store all secrets in `.env` — never commit this file
-- `OPENAI_API_KEY` and `DATABASE_URL` are stored in AWS Secrets Manager
+- Store all secrets in `.env` — never commit this file (`.env.*` is in `.gitignore`)
+- `OPENAI_API_KEY` and `DATABASE_URL` are stored in AWS Secrets Manager in production
+- Set `POSTGRES_PASSWORD` to a strong random secret before deploying (`openssl rand -base64 32`)
 - Set `API_KEY` to require `X-API-Key` header on all query endpoints in production
 - Set `ALLOWED_ORIGINS` to your CloudFront domain in production
 - Rate limiting: 20 requests/min per IP (via `slowapi`)

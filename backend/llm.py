@@ -26,9 +26,10 @@ _PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
 # ---------------------------------------------------------------------------
 
 def _build_openai_client():
+    import httpx
     from openai import OpenAI
     from backend.config import OPENAI_API_KEY
-    base_url = os.getenv("LLM_BASE_URL")   # None = official OpenAI endpoint
+    base_url = os.getenv("LLM_BASE_URL") or None   # empty string → None = official endpoint
     return OpenAI(api_key=OPENAI_API_KEY, base_url=base_url)
 
 

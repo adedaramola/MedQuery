@@ -23,14 +23,14 @@ async def api_query(request: Request, body: QueryRequest):
 
     # --- Safety gate ---
     safety = check_safety(body.query)
-    if safety.risk_level == RiskLevel.BLOCKED:
-        logger.warning("Query blocked by safety guardrails")
+    if safety.risk_level in (RiskLevel.BLOCKED, RiskLevel.OUT_OF_SCOPE):
+        logger.warning(f"Query rejected [{safety.risk_level}]: {safety.reason}")
         return QueryResponse(
             query=body.query,
             answer=safety.safe_response,
             source="Safety Guardrail",
-            source_info=SourceInfo(routing="blocked", reason=safety.reason),
-            relevance=RelevanceInfo(is_relevant=False, reason="Blocked before retrieval"),
+            source_info=SourceInfo(routing=safety.risk_level.value, reason=safety.reason),
+            relevance=RelevanceInfo(is_relevant=False, reason="Rejected before retrieval"),
             context="",
             iteration_count=0,
             source_quality=None,
@@ -75,15 +75,15 @@ async def api_query_stream(request: Request, body: QueryRequest):
 
     # --- Safety gate ---
     safety = check_safety(body.query)
-    if safety.risk_level == RiskLevel.BLOCKED:
-        logger.warning("Stream query blocked by safety guardrails")
+    if safety.risk_level in (RiskLevel.BLOCKED, RiskLevel.OUT_OF_SCOPE):
+        logger.warning(f"Stream query rejected [{safety.risk_level}]: {safety.reason}")
 
-        async def blocked_generator():
-            yield f"data: {json.dumps({'type': 'meta', 'source': 'Safety Guardrail', 'source_info': {'routing': 'blocked', 'reason': safety.reason}, 'relevance': {'is_relevant': False, 'reason': 'Blocked before retrieval'}, 'context': ''})}\n\n"
+        async def rejected_generator():
+            yield f"data: {json.dumps({'type': 'meta', 'source': 'Safety Guardrail', 'source_info': {'routing': safety.risk_level.value, 'reason': safety.reason}, 'relevance': {'is_relevant': False, 'reason': 'Rejected before retrieval'}, 'context': ''})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'answer': safety.safe_response, 'source_quality': None, 'iteration_count': 0, 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
 
         return StreamingResponse(
-            blocked_generator(),
+            rejected_generator(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )

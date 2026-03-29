@@ -113,10 +113,10 @@ def fetch_pubmed_abstracts(queries: list[str], max_per_query: int = 10) -> list[
             # Each article is separated by a blank line after the abstract block.
             # We split on double-newlines and take blocks that look like abstracts.
             blocks = [b.strip() for b in raw.split("\n\n") if len(b.strip()) > 100]
-            for block in blocks:
-                # Use the query as the Question and the abstract block as the Answer.
+            for idx, block in enumerate(blocks):
+                # Include block index so each row has a unique Question for deduplication.
                 rows.append({
-                    "Question": f"[PubMed] {query}",
+                    "Question": f"[PubMed] {query} [{idx + 1}]",
                     "Answer": block[:2000],   # cap at 2000 chars for embedding efficiency
                     "qtype": "Research",
                 })
