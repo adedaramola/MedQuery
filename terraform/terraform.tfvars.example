@@ -1,0 +1,20 @@
+# ── Core ───────────────────────────────────────────────────────────────────────
+aws_region  = "us-east-1"
+app_name    = "medical-rag"
+environment = "prod"
+
+# ── Secrets (sensitive — fill in real values in terraform.tfvars) ───────────────
+openai_api_key = "sk-your-key-here"
+db_password    = "change-me-strong-password"
+app_api_key    = ""   # leave empty to disable X-API-Key auth
+
+# ── ECS sizing ─────────────────────────────────────────────────────────────────
+backend_cpu           = 512    # 0.5 vCPU
+backend_memory        = 1024   # 1 GiB
+backend_desired_count = 1
+
+# ── Database ───────────────────────────────────────────────────────────────────
+db_instance_class = "db.t3.micro"
+
+# ── Frontend ───────────────────────────────────────────────────────────────────
+frontend_domain = ""   # leave empty to use the auto-generated CloudFront URL

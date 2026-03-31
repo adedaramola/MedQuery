@@ -137,6 +137,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker-build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    continue-on-error: true   # skip gracefully if AWS secrets are not yet configured
     environment: production
 
     steps:
