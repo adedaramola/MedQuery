@@ -63,6 +63,56 @@ resource "aws_iam_role" "ecs_task" {
   })
 }
 
+# ──────────────────────────────────────────────────────────
+# GitHub Actions CI User
+# Least-privilege IAM user for the CI/CD pipeline.
+# Permissions: push images to ECR + trigger ECS redeployments.
+# After terraform apply, copy the outputs into GitHub repository secrets.
+# ──────────────────────────────────────────────────────────
+resource "aws_iam_user" "github_ci" {
+  name = "${var.app_name}-github-ci"
+  tags = { Name = "${var.app_name}-github-ci" }
+}
+
+resource "aws_iam_user_policy" "github_ci" {
+  name = "${var.app_name}-github-ci-policy"
+  user = aws_iam_user.github_ci.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:UpdateService",
+          "ecs:DescribeServices",
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_access_key" "github_ci" {
+  user = aws_iam_user.github_ci.name
+}
+
 # Allow the task to write logs directly (belt-and-suspenders with execution role)
 resource "aws_iam_role_policy" "ecs_task_logs" {
   name = "${var.app_name}-task-logs"
