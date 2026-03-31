@@ -42,10 +42,10 @@ export default function Header({ apiStatus }) {
             letterSpacing: -0.5,
           }}
         >
-          Medical Agentic RAG
+          Medical Research Assistant
         </div>
         <div style={{ fontSize: 11, color: "#9ca3af", letterSpacing: 0.5 }}>
-          ROUTER · RETRIEVER · RELEVANCE CHECK · GENERATE
+          SEARCH · RETRIEVE · VERIFY · ANSWER
         </div>
       </div>
       <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center" }}>

@@ -128,7 +128,7 @@ export default function App() {
                 Medical Knowledge System
               </div>
               <div style={{ color: "#6b7280", fontSize: 13, lineHeight: 1.8, maxWidth: 420, textAlign: "center" }}>
-                Agentic RAG with intelligent routing across medical Q&A, device manuals, and live web search.
+                Search across medical research, drug references, and clinical guidelines.
               </div>
             </div>
           </div>
