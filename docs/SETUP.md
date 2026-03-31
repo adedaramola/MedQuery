@@ -263,21 +263,24 @@ DATABASE_URL="postgresql://..." alembic upgrade head
 
 ### Step 4: Build and Deploy the Frontend
 
+The frontend must be built with the **CloudFront URL** as the API base — not the ALB URL.
+CloudFront proxies all `/api/*` requests to the ALB internally, keeping everything on HTTPS.
+
 ```bash
 cd ..   # back to project root
-BACKEND_URL=$(cd terraform && terraform output -raw backend_url)
-echo "REACT_APP_API_URL=${BACKEND_URL}" > .env.production
+CF_DOMAIN=$(cd terraform && terraform output -raw frontend_url | sed 's|https://||')
+echo "REACT_APP_API_URL=https://${CF_DOMAIN}" > .env.production
 npm run build
 ```
 
 Sync to S3 and invalidate CloudFront:
 ```bash
 S3_BUCKET=$(cd terraform && terraform output -raw s3_frontend_bucket)
-aws s3 sync build/ s3://$S3_BUCKET --delete
-
+CF_DIST=$(cd terraform && terraform output -raw frontend_url | sed 's|https://||')
 DIST_ID=$(aws cloudfront list-distributions \
-  --query "DistributionList.Items[?Comment=='medical-rag frontend'].Id | [0]" \
+  --query "DistributionList.Items[?DomainName=='${CF_DIST}'].Id | [0]" \
   --output text)
+aws s3 sync build/ s3://$S3_BUCKET --delete
 aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
 ```
 
@@ -327,10 +330,11 @@ Required GitHub repository secrets for the `deploy` stage:
 | `AWS_REGION` | e.g. `us-east-1` |
 | `ECR_REGISTRY` | e.g. `123456789.dkr.ecr.us-east-1.amazonaws.com` |
 | `ECR_BACKEND_REPO` | ECR repo name for the backend image |
-| `ECR_FRONTEND_REPO` | ECR repo name for the frontend image |
 | `ECS_CLUSTER` | ECS cluster name |
 | `ECS_SERVICE_BACKEND` | ECS service name for the backend |
-| `CLOUDFRONT_DOMAIN` | CloudFront domain for `REACT_APP_API_URL` bake-in |
+| `CLOUDFRONT_DOMAIN` | CloudFront domain (used to bake `REACT_APP_API_URL` into the frontend build) |
+
+> All values are printed after `terraform apply`. Run `terraform output github_actions_secrets` to see them together.
 
 ---
 

@@ -72,7 +72,7 @@ def query_rag(question: str, history: Optional[List[dict]] = None) -> dict:
         "relevance_reason": None,
         "iteration_count": 0,
         "history": history or [],
-        "confidence": 0.0,
+        "source_quality": None,
     }
     result = graph.invoke(initial_state)
     logger.info(f"Query completed: {question[:50]}...")

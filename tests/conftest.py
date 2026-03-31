@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for the Medical Agentic RAG test suite.
+Shared pytest fixtures for the MedQuery test suite.
 
 All external I/O (PostgreSQL, OpenAI) is mocked so tests run
 offline with no real database or API calls.
