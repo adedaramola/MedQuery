@@ -104,15 +104,16 @@ export default function MessageBubble({ msg }) {
   const isRerouted = msg.relevance?.is_relevant === false;
   const isStreaming = msg.streaming === true;
 
-  const confidencePct = msg.confidence != null ? Math.round(msg.confidence * 100) : null;
-  const confidenceColor =
-    confidencePct == null ? null :
-    confidencePct >= 80 ? "#10b981" :
-    confidencePct >= 55 ? "#f59e0b" : "#ef4444";
-  const confidenceBg =
-    confidencePct == null ? null :
-    confidencePct >= 80 ? "rgba(16,185,129,0.1)" :
-    confidencePct >= 55 ? "rgba(245,158,11,0.1)" : "rgba(239,68,68,0.1)";
+  const tier = msg.source_quality?.tier;
+  const tierColor =
+    tier === "verified_corpus" ? "#10b981" :
+    tier === "external_web"    ? "#f59e0b" : null;
+  const tierBg =
+    tier === "verified_corpus" ? "rgba(16,185,129,0.1)" :
+    tier === "external_web"    ? "rgba(245,158,11,0.1)" : null;
+  const tierLabel =
+    tier === "verified_corpus" ? "✓ Verified corpus" :
+    tier === "external_web"    ? "~ Web source" : null;
 
   return (
     <div style={{ display: "flex", gap: 10, marginBottom: 20, alignItems: "flex-start" }}>
@@ -148,15 +149,15 @@ export default function MessageBubble({ msg }) {
                 Re-routed to web
               </span>
             )}
-            {confidencePct != null && !isStreaming && (
+            {tierLabel != null && !isStreaming && (
               <span
                 style={{
-                  background: confidenceBg, border: `1px solid ${confidenceColor}`,
-                  color: confidenceColor, borderRadius: 20, padding: "3px 10px",
+                  background: tierBg, border: `1px solid ${tierColor}`,
+                  color: tierColor, borderRadius: 20, padding: "3px 10px",
                   fontSize: 11, fontWeight: 600, letterSpacing: 0.3,
                 }}
               >
-                {confidencePct >= 80 ? "✓" : confidencePct >= 55 ? "~" : "!"} {confidencePct}% confidence
+                {tierLabel}
               </span>
             )}
           </div>

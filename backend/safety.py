@@ -8,6 +8,7 @@ Checks run in this order:
   3. Flag check   — allow but append disclaimer (FLAGGED)
   4. Pass through — (SAFE)
 """
+import os
 import re
 import logging
 from dataclasses import dataclass
@@ -35,66 +36,42 @@ class SafetyResult:
 
 
 # ---------------------------------------------------------------------------
-# Scope: medical keyword allowlist
+# Scope: LLM-based medical topic classifier
 # ---------------------------------------------------------------------------
-# A query must match at least one of these terms to be considered in-scope.
-# Organised by category for maintainability — compiled into a single pattern.
+# Uses gpt-4o-mini (cheap, fast) to decide if a query is health/medicine-related.
+# Fails open — if the classifier call errors, the query is allowed through.
 
-# Trailing \b omitted intentionally — allows plurals and inflected forms
-# (e.g. "vaccines", "treatments", "medications", "symptoms").
-_MEDICAL_KEYWORDS = re.compile(r"""
-    \b(
-    # Conditions & diseases
-    disease|illness|condition|disorder|syndrome|infection|cancer|tumor|tumour|
-    carcinoma|lymphoma|leukemia|melanoma|diabetes|hypertension|stroke|infarct|
-    pneumonia|sepsis|asthma|copd|arthritis|osteoporosis|epilepsy|seizure|
-    dementia|alzheimer|parkinson|depression|anxiety|psychosis|schizophrenia|
-    lupus|fibromyalgia|hypothyroid|hyperthyroid|anemia|haemophilia|hemophilia|
-    malaria|tuberculosis|hiv|hepatitis|cirrhosis|nephropathy|neuropathy|
-    cardiovascular|cerebrovascular|autoimmune|inflammatory|congenital|chronic|acute|
+def _is_medical_query(query: str) -> bool:
+    """Return True if the query is related to medicine, health, or clinical research."""
+    try:
+        from openai import OpenAI
+        from backend.config import OPENAI_API_KEY
+        base_url = os.getenv("LLM_BASE_URL") or None
+        client = OpenAI(api_key=OPENAI_API_KEY, base_url=base_url)
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a query classifier for a medical research assistant. "
+                        "Determine whether the user's question is related to medicine, "
+                        "health, biology, clinical research, medical devices, "
+                        "pharmaceuticals, or any health-related topic. "
+                        "Reply with ONLY 'yes' or 'no'."
+                    ),
+                },
+                {"role": "user", "content": query},
+            ],
+            temperature=0,
+            max_tokens=5,
+        )
+        answer = resp.choices[0].message.content.strip().lower()
+        return answer.startswith("yes")
+    except Exception as e:
+        logger.warning(f"Scope classifier error (failing open): {e}")
+        return True  # fail open — never block a query due to a classifier error
 
-    # Symptoms
-    symptom|pain|fever|cough|fatigue|nausea|vomit|diarrhea|diarrhoea|
-    headache|migraine|dyspnoea|dyspnea|breathless|chest\s+pain|palpitation|
-    swelling|oedema|edema|jaundice|haemorrhage|hemorrhage|bleeding|rash|
-    itching|pruritus|weight\s+loss|weight\s+gain|insomnia|dizziness|vertigo|
-
-    # Medications & pharmacology
-    medication|medicine|drug|pill|tablet|capsule|dose|dosage|prescription|
-    antibiotic|antiviral|antifungal|analgesic|anti.?inflammatory|antidepressant|
-    anticoagulant|antiplatelet|antihypertensive|beta.?blocker|ace\s+inhibitor|
-    statin|diuretic|bronchodilator|corticosteroid|steroid|hormone|insulin|
-    vaccine|immunisation|immunization|chemotherapy|immunotherapy|biologics|
-    metformin|lisinopril|atorvastatin|warfarin|aspirin|omeprazole|sertraline|
-    amoxicillin|ciprofloxacin|doxycycline|prednisone|levothyroxine|amlodipine|
-    furosemide|methotrexate|hydroxychloroquine|levetiracetam|clopidogrel|
-
-    # Treatments & procedures
-    treatment|therapy|surgery|operation|procedure|transplant|dialysis|
-    biopsy|chemotherapy|radiation|radiotherapy|physiotherapy|rehabilitation|
-    vaccination|immunisation|screening|diagnosis|prognosis|intervention|
-    clinical\s+trial|randomized|placebo|protocol|guideline|
-
-    # Anatomy & physiology
-    heart|cardiac|coronary|artery|vein|blood|haematology|hematology|
-    brain|neurology|neurological|spine|spinal|renal|kidney|liver|hepatic|
-    lung|pulmonary|respiratory|gastrointestinal|bowel|intestine|colon|
-    bone|skeletal|muscle|musculoskeletal|joint|ligament|tendon|
-    immune|lymph|endocrine|pancreas|thyroid|adrenal|pituitary|
-
-    # Medical specialties & research
-    medical|clinical|physician|doctor|nurse|pharmacist|healthcare|hospital|
-    patient|paediatric|pediatric|geriatric|obstetric|gynaecology|gynecology|
-    oncology|cardiology|neurology|pathology|radiology|immunology|
-    pubmed|fda|cdc|nih|lancet|nejm|bmj|evidence.?based|
-
-    # Diagnostics & labs
-    diagnosis|diagnostic|test|lab|laboratory|blood\s+test|biopsy|mri|
-    ct\s+scan|x.?ray|ultrasound|ecg|ekg|echocardiogram|endoscopy|
-    biomarker|cholesterol|glucose|creatinine|haemoglobin|hemoglobin|
-    white\s+blood\s+cell|platelet|enzyme|hormone\s+level
-    )
-""", re.IGNORECASE | re.VERBOSE)
 
 _OUT_OF_SCOPE_RESPONSE = (
     "This system is designed exclusively for medical research queries. "
@@ -183,7 +160,7 @@ def check_safety(query: str) -> SafetyResult:
         safe_response (populated for BLOCKED and OUT_OF_SCOPE queries).
     """
     # 1. Scope check — reject non-medical queries first
-    if not _MEDICAL_KEYWORDS.search(query):
+    if not _is_medical_query(query):
         logger.info(f"OUT_OF_SCOPE query rejected: {query[:60]}")
         return SafetyResult(
             risk_level=RiskLevel.OUT_OF_SCOPE,

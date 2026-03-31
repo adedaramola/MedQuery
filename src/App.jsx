@@ -75,7 +75,7 @@ export default function App() {
           } else if (payload.type === "token") {
             assistantMsg = { ...assistantMsg, answer: (assistantMsg.answer || "") + payload.token };
           } else if (payload.type === "done") {
-            assistantMsg = { ...assistantMsg, streaming: false, answer: payload.answer, confidence: payload.confidence, iteration_count: payload.iteration_count, timestamp: payload.timestamp };
+            assistantMsg = { ...assistantMsg, streaming: false, answer: payload.answer, source_quality: payload.source_quality, iteration_count: payload.iteration_count, timestamp: payload.timestamp };
           } else if (payload.type === "error") {
             setMessages((prev) => [...prev.slice(0, -1), { role: "assistant", error: payload.message }]);
             return;
