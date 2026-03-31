@@ -42,7 +42,7 @@ export default function Header({ apiStatus }) {
             letterSpacing: -0.5,
           }}
         >
-          Medical Research Assistant
+          MedQuery
         </div>
         <div style={{ fontSize: 11, color: "#9ca3af", letterSpacing: 0.5 }}>
           SEARCH · RETRIEVE · VERIFY · ANSWER

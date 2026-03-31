@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Medical Agentic RAG Backend")
+    logger.info("Starting MedQuery Backend")
     try:
         init_schema()
         init_history_schema()
@@ -32,8 +32,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Medical Agentic RAG",
-    description="Production-grade medical knowledge system with routing and relevance checking",
+    title="MedQuery",
+    description="Medical question-answering system with intelligent routing and relevance checking",
     version=API_VERSION,
     lifespan=lifespan,
 )

@@ -1,4 +1,4 @@
-# Medical Agentic RAG – Implementation Summary
+# MedQuery – Implementation Summary
 
 ## What Was Built
 

@@ -1,4 +1,4 @@
-# Medical Agentic RAG – Setup & Deployment Guide
+# MedQuery – Setup & Deployment Guide
 
 ## Prerequisites
 

@@ -1,5 +1,5 @@
 """
-Safety guardrails for the Medical RAG system.
+Safety guardrails for MedQuery.
 
 All queries pass through `check_safety` before entering the LangGraph pipeline.
 Checks run in this order:

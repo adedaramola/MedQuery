@@ -1,4 +1,4 @@
-# Medical Research Assistant
+# MedQuery
 
 A **medical question-answering system** built with FastAPI, LangGraph, and PostgreSQL + pgvector. Queries are routed across a medical Q&A corpus, FDA drug label data, and live web search, with a relevance check loop before generating a streamed answer.
 

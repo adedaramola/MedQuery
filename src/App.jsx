@@ -125,7 +125,7 @@ export default function App() {
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>🩺</div>
               <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 8 }}>
-                Medical Knowledge System
+                MedQuery
               </div>
               <div style={{ color: "#6b7280", fontSize: 13, lineHeight: 1.8, maxWidth: 420, textAlign: "center" }}>
                 Search across medical research, drug references, and clinical guidelines.

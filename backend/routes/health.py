@@ -40,7 +40,7 @@ async def ingest(
 @router.get("/")
 async def root():
     return {
-        "service": "Medical Agentic RAG",
+        "service": "MedQuery",
         "version": API_VERSION,
         "docs": "/docs",
         "health": "/api/health",
