@@ -3,7 +3,7 @@
 ## Project Structure
 
 ```
-medicalAgenticRag/
+MedQuery/
 │
 ├── backend/                        # Python backend (FastAPI)
 │   ├── config.py                   # Constants, env vars, JSON log formatter
@@ -158,7 +158,7 @@ Browser
                             └── pgdata volume (persists across restarts)
 ```
 
-The frontend never talks directly to the backend port — all API calls go through nginx. `REACT_APP_API_URL` is baked in at build time as `http://localhost` so the browser's requests stay on port 80.
+The frontend never talks directly to the backend port — all API calls go through nginx. `REACT_APP_API_URL` is baked in at build time as `http://localhost` (Docker) or `https://<cloudfront-domain>` (production) so the browser's requests stay on the same host. The frontend appends `/api/...` paths itself, so `REACT_APP_API_URL` must not include a trailing `/api`.
 
 ## Data Flow
 
@@ -268,7 +268,7 @@ All ECS tasks run in private subnets. RDS is not publicly accessible. Secrets ar
 | `backend-test` | All pushes/PRs | pytest against real pgvector container |
 | `frontend-build` | All pushes/PRs | `npm ci && npm run build` |
 | `docker-build` | After tests pass | Build both Docker images (cache to GHA) |
-| `deploy` | Push to `main` only | Push to ECR, force ECS redeployment |
+| `deploy` | Push to `main` only | Push backend to ECR + force ECS redeployment; build React + sync to S3 + invalidate CloudFront |
 
 ## Key Configuration
 

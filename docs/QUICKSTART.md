@@ -65,8 +65,8 @@ psql medical_rag -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ### 3. Install Dependencies
 
 ```bash
-git clone https://github.com/adedaramola/medicalAgenticRag.git
-cd medicalAgenticRag
+git clone https://github.com/adedaramola/MedQuery.git
+cd MedQuery
 
 # Python
 python3 -m venv .venv

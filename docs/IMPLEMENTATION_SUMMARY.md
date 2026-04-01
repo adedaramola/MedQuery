@@ -85,9 +85,9 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 |------|---------|
 | `main.tf` | AWS provider, Terraform version constraint, optional S3 remote state |
 | `variables.tf` | All inputs: region, CPU/memory, secrets, DB class, frontend domain |
-| `outputs.tf` | `backend_url`, `frontend_url`, `ecr_repository_url`, `s3_frontend_bucket`, `rds_endpoint` |
+| `outputs.tf` | `backend_url`, `frontend_url`, `ecr_repository_url`, `s3_frontend_bucket`, `rds_endpoint`, `github_actions_secrets` (sensitive — prints all CI secret values) |
 | `vpc.tf` | VPC, public/private subnets across 2 AZs, IGW, NAT Gateway, security groups |
-| `iam.tf` | ECS execution role (ECR + CloudWatch + Secrets Manager) + task role |
+| `iam.tf` | ECS execution role (ECR + CloudWatch + Secrets Manager) + task role + `medquery-github-ci` IAM user (ECR push, ECS update, S3 sync, CloudFront invalidation) |
 | `secrets.tf` | Secrets Manager secrets: `OPENAI_API_KEY`, `API_KEY`, `DATABASE_URL` |
 | `ecr.tf` | ECR repository + lifecycle policy (retains 2 most recent images) |
 | `rds.tf` | RDS PostgreSQL 16 in private subnets; custom parameter group; pgvector-compatible |

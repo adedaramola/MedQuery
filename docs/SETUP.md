@@ -41,8 +41,8 @@ psql medical_rag -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ### 3. Clone and Install Dependencies
 
 ```bash
-git clone https://github.com/adedaramola/medicalAgenticRag.git
-cd medicalAgenticRag
+git clone https://github.com/adedaramola/MedQuery.git
+cd MedQuery
 
 # Python environment
 python3 -m venv .venv
@@ -263,24 +263,24 @@ DATABASE_URL="postgresql://..." alembic upgrade head
 
 ### Step 4: Build and Deploy the Frontend
 
-The frontend must be built with the **CloudFront URL** as the API base — not the ALB URL.
+The frontend must be built with the **CloudFront domain** as the API base — not the ALB URL.
 CloudFront proxies all `/api/*` requests to the ALB internally, keeping everything on HTTPS.
+Do **not** include a trailing `/api` — the frontend appends `/api/...` paths itself.
 
 ```bash
 cd ..   # back to project root
 CF_DOMAIN=$(cd terraform && terraform output -raw frontend_url | sed 's|https://||')
-echo "REACT_APP_API_URL=https://${CF_DOMAIN}" > .env.production
-npm run build
+REACT_APP_API_URL="https://${CF_DOMAIN}" npm run build
 ```
 
 Sync to S3 and invalidate CloudFront:
 ```bash
 S3_BUCKET=$(cd terraform && terraform output -raw s3_frontend_bucket)
-CF_DIST=$(cd terraform && terraform output -raw frontend_url | sed 's|https://||')
-DIST_ID=$(aws cloudfront list-distributions \
-  --query "DistributionList.Items[?DomainName=='${CF_DIST}'].Id | [0]" \
-  --output text)
-aws s3 sync build/ s3://$S3_BUCKET --delete
+DIST_ID=$(cd terraform && terraform output -raw github_actions_secrets | grep CLOUDFRONT_DISTRIBUTION_ID | awk '{print $3}')
+aws s3 sync build/ s3://$S3_BUCKET --delete \
+  --cache-control "public,max-age=31536000,immutable" --exclude "index.html"
+aws s3 cp build/index.html s3://$S3_BUCKET/index.html \
+  --cache-control "no-cache,no-store,must-revalidate"
 aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
 ```
 
@@ -325,14 +325,16 @@ Required GitHub repository secrets for the `deploy` stage:
 
 | Secret | Description |
 |--------|-------------|
-| `AWS_ACCESS_KEY_ID` | IAM key with ECR push + ECS update permissions |
+| `AWS_ACCESS_KEY_ID` | IAM key for the `medquery-github-ci` user |
 | `AWS_SECRET_ACCESS_KEY` | Corresponding secret |
 | `AWS_REGION` | e.g. `us-east-1` |
 | `ECR_REGISTRY` | e.g. `123456789.dkr.ecr.us-east-1.amazonaws.com` |
 | `ECR_BACKEND_REPO` | ECR repo name for the backend image |
 | `ECS_CLUSTER` | ECS cluster name |
 | `ECS_SERVICE_BACKEND` | ECS service name for the backend |
-| `CLOUDFRONT_DOMAIN` | CloudFront domain (used to bake `REACT_APP_API_URL` into the frontend build) |
+| `CLOUDFRONT_DOMAIN` | CloudFront domain (baked into `REACT_APP_API_URL` — no `/api` suffix) |
+| `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront distribution ID (for cache invalidation after frontend deploy) |
+| `S3_FRONTEND_BUCKET` | S3 bucket name for the React build output |
 
 > All values are printed after `terraform apply`. Run `terraform output github_actions_secrets` to see them together.
 
@@ -353,10 +355,14 @@ aws ecs update-service \
 
 **Frontend change:**
 ```bash
-npm run build
-aws s3 sync build/ s3://$(cd terraform && terraform output -raw s3_frontend_bucket) --delete
-DIST_ID=$(aws cloudfront list-distributions \
-  --query "DistributionList.Items[?Comment=='medical-rag frontend'].Id | [0]" --output text)
+CF_DOMAIN=$(cd terraform && terraform output -raw frontend_url | sed 's|https://||')
+REACT_APP_API_URL="https://${CF_DOMAIN}" npm run build
+S3_BUCKET=$(cd terraform && terraform output -raw s3_frontend_bucket)
+DIST_ID=$(cd terraform && terraform output -raw github_actions_secrets | grep CLOUDFRONT_DISTRIBUTION_ID | awk '{print $3}')
+aws s3 sync build/ s3://$S3_BUCKET --delete \
+  --cache-control "public,max-age=31536000,immutable" --exclude "index.html"
+aws s3 cp build/index.html s3://$S3_BUCKET/index.html \
+  --cache-control "no-cache,no-store,must-revalidate"
 aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
 ```
 
