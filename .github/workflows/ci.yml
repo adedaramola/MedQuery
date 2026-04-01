@@ -108,7 +108,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          dockerfile: Dockerfile
+          file: Dockerfile
           push: false
           tags: medical-rag-backend:ci
           cache-from: type=gha
@@ -118,7 +118,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          dockerfile: Dockerfile.frontend
+          file: Dockerfile.frontend
           push: false
           tags: medical-rag-frontend:ci
           build-args: |
@@ -163,7 +163,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          dockerfile: Dockerfile
+          file: Dockerfile
           push: true
           tags: ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_BACKEND_REPO }}:${{ github.sha }},${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_BACKEND_REPO }}:latest
           cache-from: type=gha
@@ -187,7 +187,7 @@ jobs:
 
       - name: Build React frontend
         env:
-          REACT_APP_API_URL: https://${{ secrets.CLOUDFRONT_DOMAIN }}/api
+          REACT_APP_API_URL: https://${{ secrets.CLOUDFRONT_DOMAIN }}
           CI: "false"
         run: npm run build
 
