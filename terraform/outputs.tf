@@ -60,13 +60,15 @@ output "github_actions_secrets" {
   description = "All values needed for GitHub Actions secrets (run: terraform output github_actions_secrets)"
   sensitive   = true
   value = <<-EOT
-    AWS_ACCESS_KEY_ID     = ${aws_iam_access_key.github_ci.id}
-    AWS_SECRET_ACCESS_KEY = ${aws_iam_access_key.github_ci.secret}
-    AWS_REGION            = ${var.aws_region}
-    ECR_REGISTRY          = ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
-    ECR_BACKEND_REPO      = ${aws_ecr_repository.backend.name}
-    ECS_CLUSTER           = ${aws_ecs_cluster.main.name}
-    ECS_SERVICE_BACKEND   = ${aws_ecs_service.backend.name}
-    CLOUDFRONT_DOMAIN     = ${aws_cloudfront_distribution.frontend.domain_name}
+    AWS_ACCESS_KEY_ID            = ${aws_iam_access_key.github_ci.id}
+    AWS_SECRET_ACCESS_KEY        = ${aws_iam_access_key.github_ci.secret}
+    AWS_REGION                   = ${var.aws_region}
+    ECR_REGISTRY                 = ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
+    ECR_BACKEND_REPO             = ${aws_ecr_repository.backend.name}
+    ECS_CLUSTER                  = ${aws_ecs_cluster.main.name}
+    ECS_SERVICE_BACKEND          = ${aws_ecs_service.backend.name}
+    CLOUDFRONT_DOMAIN            = ${aws_cloudfront_distribution.frontend.domain_name}
+    CLOUDFRONT_DISTRIBUTION_ID   = ${aws_cloudfront_distribution.frontend.id}
+    S3_FRONTEND_BUCKET           = ${aws_s3_bucket.frontend.bucket}
   EOT
 }
