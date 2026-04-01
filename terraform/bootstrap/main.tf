@@ -45,7 +45,7 @@ variable "aws_region" {
 variable "app_name" {
   description = "Application name — must match the value in terraform/variables.tf"
   type        = string
-  default     = "medical-rag"
+  default     = "medquery"
 }
 
 # ──────────────────────────────────────────────────────────

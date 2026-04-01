@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "app_name" {
   description = "Application name used to prefix all resource names"
   type        = string
-  default     = "medical-rag"
+  default     = "medquery"
 }
 
 variable "environment" {

@@ -1,6 +1,6 @@
 # ── Core ───────────────────────────────────────────────────────────────────────
 aws_region  = "us-east-1"
-app_name    = "medical-rag"
+app_name    = "medquery"
 environment = "prod"
 
 # ── Secrets (sensitive — fill in real values in terraform.tfvars) ───────────────

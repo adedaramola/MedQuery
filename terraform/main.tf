@@ -12,16 +12,12 @@ terraform {
     }
   }
 
-  # Remote state — uncomment and fill in your S3 bucket name before running
-  # terraform init in production. State is stored locally until then.
-  #
-  # backend "s3" {
-  #   bucket         = "your-terraform-state-bucket"   # <-- replace with your bucket
-  #   key            = "medical-rag/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "terraform-state-lock"          # optional: state locking
-  #   encrypt        = true
-  # }
+  backend "s3" {
+    bucket  = "allthingspractice"
+    key     = "medquery/terraform.tfstate"
+    region  = "us-east-1"
+    encrypt = true
+  }
 }
 
 provider "aws" {
