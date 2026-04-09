@@ -54,6 +54,10 @@ resource "aws_ecs_task_definition" "backend" {
         {
           name      = "DATABASE_URL"
           valueFrom = aws_secretsmanager_secret.db_url.arn
+        },
+        {
+          name      = "TAVILY_API_KEY"
+          valueFrom = aws_secretsmanager_secret.tavily_api_key.arn
         }
       ],
       var.app_api_key != "" ? [{

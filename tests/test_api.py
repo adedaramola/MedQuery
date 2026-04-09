@@ -1,7 +1,7 @@
 """
 Integration tests for FastAPI routes.
 
-All external I/O (OpenAI, pgvector, DuckDuckGo) is mocked.
+All external I/O (OpenAI, pgvector, Tavily) is mocked.
 The TestClient exercises the full request/response cycle.
 """
 import json

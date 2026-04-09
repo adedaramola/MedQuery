@@ -22,7 +22,7 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 | `history.py` | PostgreSQL conversation store with turn-count and token-aware truncation (`_truncate_to_token_budget()`) |
 | `vector_store.py` | pgvector tables with HNSW indexes; `ingest_data()` prioritises real CSVs (PubMed, FDA) over synthetic fallbacks |
 | `pipeline/state.py` | `compute_source_quality()` — returns tier/label/disclaimer dict; replaces the old heuristic confidence float |
-| `pipeline/nodes.py` | All LangGraph nodes; `web_search` uses Tavily when `TAVILY_API_KEY` is set, falls back to DuckDuckGo; `get_llm_response` imported from `backend/llm.py` |
+| `pipeline/nodes.py` | All LangGraph nodes; `web_search` uses Tavily (requires `TAVILY_API_KEY`); `get_llm_response` imported from `backend/llm.py` |
 | `pipeline/graph.py` | `build_agentic_rag()` graph builder; `query_rag()` executor; `stream_rag_response()` SSE generator using `stream_llm_response()` |
 | `routes/query.py` | Safety gate before all queries; `POST /api/query`; `POST /api/query/stream` (auth + rate limited) |
 | `routes/health.py` | `GET /api/health`, `POST /api/ingest`, `GET /` |
@@ -112,7 +112,7 @@ safety_check (backend/safety.py)
 ```
 
 - **router** and **check_relevance** both use `temperature=0` for deterministic decisions
-- **web_search** uses Tavily API in production; falls back to DuckDuckGo when `TAVILY_API_KEY` is unset
+- **web_search** uses Tavily API (requires `TAVILY_API_KEY`; raises an error if unset)
 - The loop cap (`MAX_ITERATIONS=3`) prevents runaway retries
 - All LLM calls routed through `backend/llm.py` — no direct SDK imports in pipeline nodes
 
@@ -172,7 +172,7 @@ MAX_HISTORY_TURNS   = 10       # also configurable via MAX_HISTORY_TURNS env var
 MAX_TOKENS_PER_TURN = 300      # chars-to-token ratio ≈ 4:1
 ALLOWED_ORIGINS     = "http://localhost:3000"
 API_KEY             = ""
-TAVILY_API_KEY      = ""       # set to enable Tavily; unset = DuckDuckGo fallback
+TAVILY_API_KEY      = ""       # required for web search
 ```
 
 ---

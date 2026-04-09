@@ -7,16 +7,18 @@ from backend.models import GraphState
 # trustworthiness of the *retrieval source*, not the correctness of the answer.
 # Real answer-faithfulness scoring would require RAGAS or a separate evaluator.
 _SOURCE_TIER: dict[str, str] = {
-    "Q&A":         "verified_corpus",   # structured, curated Q&A
-    "Device":      "verified_corpus",   # device manual content
-    "Web Search":  "external_web",      # unverified third-party pages
+    "Q&A":        "verified_corpus",    # structured, curated Q&A
+    "Device":     "verified_corpus",    # device manual content
+    "Web Search": "external_web",       # unverified third-party pages
+    "Document":   "uploaded_document",  # user-uploaded files
 }
 
 _TIER_LABEL: dict[str, str] = {
-    "verified_corpus": "Verified corpus (structured medical data)",
-    "external_web":    "External web search (unverified)",
-    "unknown":         "Unknown source",
-    "failed":          "Retrieval failed",
+    "verified_corpus":   "Verified corpus (structured medical data)",
+    "external_web":      "External web search (unverified)",
+    "uploaded_document": "Uploaded document",
+    "unknown":           "Unknown source",
+    "failed":            "Retrieval failed",
 }
 
 
@@ -36,6 +38,8 @@ def compute_source_quality(state: GraphState) -> Optional[dict]:
         tier = "failed"
     elif "Web Search" in source:
         tier = "external_web"
+    elif "Document" in source:
+        tier = "uploaded_document"
     elif any(k in source for k in ("Q&A", "Device")):
         tier = "verified_corpus"
     else:

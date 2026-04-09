@@ -11,7 +11,7 @@ from backend.llm import stream_llm_response
 from backend.models import GraphState
 from backend.pipeline.nodes import (
     router_node, route_decision,
-    retrieve_clinical, retrieve_device, web_search,
+    retrieve_clinical, retrieve_device, retrieve_uploaded, web_search,
     check_relevance, relevance_decision,
     augment, generate,
 )
@@ -25,13 +25,14 @@ def build_agentic_rag():
     """Build and compile the LangGraph pipeline (cached for the process lifetime)."""
     workflow = StateGraph(GraphState)
 
-    workflow.add_node("router",            router_node)
-    workflow.add_node("retrieve_clinical", retrieve_clinical)
-    workflow.add_node("retrieve_device",   retrieve_device)
-    workflow.add_node("web_search",        web_search)
-    workflow.add_node("relevance_check",   check_relevance)
-    workflow.add_node("augment",           augment)
-    workflow.add_node("generate",          generate)
+    workflow.add_node("router",             router_node)
+    workflow.add_node("retrieve_clinical",  retrieve_clinical)
+    workflow.add_node("retrieve_device",    retrieve_device)
+    workflow.add_node("retrieve_uploaded",  retrieve_uploaded)
+    workflow.add_node("web_search",         web_search)
+    workflow.add_node("relevance_check",    check_relevance)
+    workflow.add_node("augment",            augment)
+    workflow.add_node("generate",           generate)
 
     workflow.add_edge(START, "router")
     workflow.add_conditional_edges(
@@ -39,12 +40,14 @@ def build_agentic_rag():
         route_decision,
         {
             "medical_knowledge": "retrieve_clinical",
-            "device_manual": "retrieve_device",
-            "web_search":    "web_search",
+            "device_manual":     "retrieve_device",
+            "uploaded_document": "retrieve_uploaded",
+            "web_search":        "web_search",
         },
     )
     workflow.add_edge("retrieve_clinical", "relevance_check")
     workflow.add_edge("retrieve_device",   "relevance_check")
+    workflow.add_edge("retrieve_uploaded", "relevance_check")
     workflow.add_edge("web_search",        "relevance_check")
     workflow.add_conditional_edges(
         "relevance_check",

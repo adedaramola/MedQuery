@@ -27,6 +27,17 @@ resource "aws_secretsmanager_secret_version" "db_url" {
   secret_string = "postgresql://medical_rag_user:${var.db_password}@${aws_db_instance.postgres.endpoint}/medical_rag"
 }
 
+resource "aws_secretsmanager_secret" "tavily_api_key" {
+  name                    = "${var.app_name}/${var.environment}/tavily-api-key"
+  description             = "Tavily API key for web search"
+  recovery_window_in_days = 7
+}
+
+resource "aws_secretsmanager_secret_version" "tavily_api_key" {
+  secret_id     = aws_secretsmanager_secret.tavily_api_key.id
+  secret_string = var.tavily_api_key
+}
+
 resource "aws_secretsmanager_secret" "app_api_key" {
   count                   = var.app_api_key != "" ? 1 : 0
   name                    = "${var.app_name}/${var.environment}/app-api-key"

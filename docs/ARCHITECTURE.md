@@ -17,7 +17,7 @@ MedQuery/
 │   ├── vector_store.py             # pgvector tables, HNSW indexes, query/ingest (real data only)
 │   ├── pipeline/
 │   │   ├── state.py                # compute_source_quality() descriptor
-│   │   ├── nodes.py                # All LangGraph node functions (Tavily/DDG web search)
+│   │   ├── nodes.py                # All LangGraph node functions (Tavily web search)
 │   │   └── graph.py                # build_agentic_rag(), query_rag(), stream_rag_response()
 │   ├── routes/
 │   │   ├── query.py                # POST /api/query, POST /api/query/stream (safety gate)
@@ -115,7 +115,7 @@ safety_check  (backend/safety.py — before graph)
       router  (LLM at temperature=0 — deterministic)
         ├── "medical_knowledge" → retrieve_clinical
         ├── "device_manual"     → retrieve_device
-        └── "web_search"        → web_search (Tavily or DuckDuckGo fallback)
+        └── "web_search"        → web_search (Tavily)
                 ↓
           check_relevance  (LLM at temperature=0)
             ├── relevant     → augment → generate → END
@@ -217,7 +217,7 @@ Replaced the old heuristic "confidence score" with an honest `source_quality` de
 | Source | Tier | Label |
 |--------|------|-------|
 | Medical Q&A Collection, Medical Device Manual | `verified_corpus` | Verified corpus (structured medical data) |
-| Web Search (Tavily / DuckDuckGo) | `external_web` | External web search (unverified) |
+| Web Search (Tavily) | `external_web` | External web search (unverified) |
 | Web Search (failed) | `failed` | Retrieval failed |
 | Unknown | `unknown` | Unknown source |
 
@@ -284,5 +284,5 @@ MAX_HISTORY_TURNS   = 10       # conversation turns kept per session
 MAX_TOKENS_PER_TURN = 300      # token budget per history turn
 ALLOWED_ORIGINS     = "http://localhost:3000"
 API_KEY             = ""       # enables X-API-Key auth when non-empty
-TAVILY_API_KEY      = ""       # production web search (DuckDuckGo used if empty)
+TAVILY_API_KEY      = ""       # required for web search
 ```

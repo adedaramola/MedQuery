@@ -82,6 +82,7 @@ def client(monkeypatch):
     import backend.history as hist_mod
 
     monkeypatch.setattr(vs, "init_schema", MagicMock())
+    monkeypatch.setattr(vs, "init_document_schema", MagicMock())
     monkeypatch.setattr(vs, "count_qna", MagicMock(return_value=100))
     monkeypatch.setattr(vs, "count_device", MagicMock(return_value=50))
     monkeypatch.setattr(hist_mod, "init_history_schema", MagicMock())
@@ -101,6 +102,7 @@ def client_with_api_key(monkeypatch):
     import backend.auth as auth_mod
 
     monkeypatch.setattr(vs, "init_schema", MagicMock())
+    monkeypatch.setattr(vs, "init_document_schema", MagicMock())
     monkeypatch.setattr(vs, "count_qna", MagicMock(return_value=100))
     monkeypatch.setattr(vs, "count_device", MagicMock(return_value=50))
     monkeypatch.setattr(hist_mod, "init_history_schema", MagicMock())

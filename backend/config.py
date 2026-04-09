@@ -28,7 +28,7 @@ ALLOWED_ORIGINS: list = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").sp
 # Leave unset (or empty) during local development to skip auth.
 API_KEY: str = os.getenv("API_KEY", "")
 
-# Web search provider — Tavily (production) or DuckDuckGo (fallback / dev)
+# Web search provider — Tavily (required for web_search node)
 TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
 
 class _JsonFormatter(logging.Formatter):

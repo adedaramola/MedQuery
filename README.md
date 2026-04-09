@@ -24,7 +24,7 @@ A **medical question-answering system** built with FastAPI, LangGraph, and Postg
 │ - Safety guardrail: scope check + harm patterns        │
 │ - OpenAI GPT-4o-mini (routing, generation, scope)      │
 │ - OpenAI Embeddings (similarity search)                │
-│ - DuckDuckGo Search (web fallback, no API key needed)  │
+│ - Tavily Search API (web search)                       │
 │ - Streaming SSE responses                              │
 │ - PostgreSQL conversation history + pgvector search    │
 └──────────────────┬──────────────────────────────────────┘
@@ -32,9 +32,9 @@ A **medical question-answering system** built with FastAPI, LangGraph, and Postg
      ┌─────────────┼─────────────┐
      │             │             │
 ┌────▼──────┐ ┌───▼──────┐ ┌───▼───────┐
-│PostgreSQL │ │OpenAI    │ │DuckDuckGo │
-│+ pgvector │ │API       │ │(free)     │
-│(QnA+FDA)  │ │(LLM)     │ │           │
+│PostgreSQL │ │OpenAI    │ │Tavily API │
+│+ pgvector │ │API       │ │(web search│
+│(QnA+FDA)  │ │(LLM)     │ │)          │
 └───────────┘ └──────────┘ └───────────┘
 ```
 
@@ -148,7 +148,7 @@ Ingest CSV data into PostgreSQL/pgvector. Safe to call multiple times (upsert).
 
 1. **Safety check** — GPT-4o-mini classifies whether the query is medical/health-related; non-medical queries are rejected before retrieval. High-risk harm patterns are blocked separately.
 2. **Router** — decides retrieval source: Q&A corpus, device/drug data, or web search
-3. **Retriever** — fetches top-N documents via cosine similarity (pgvector) or DuckDuckGo
+3. **Retriever** — fetches top-N documents via cosine similarity (pgvector) or Tavily web search
 4. **Relevance check** — validates whether the context answers the question; falls back to web search if not (max 3 iterations)
 5. **Augment** — builds a RAG prompt with context + conversation history
 6. **Generate** — streams the answer token-by-token via SSE

@@ -66,7 +66,7 @@ OPENAI_API_KEY=sk-...
 DATABASE_URL=postgresql://<your-system-username>@localhost/medical_rag
 
 # Recommended
-TAVILY_API_KEY=tvly-...      # production web search; DuckDuckGo used if absent
+TAVILY_API_KEY=tvly-...      # required for web search
 API_KEY=your-secret          # enables X-API-Key header auth; leave empty to disable
 ALLOWED_ORIGINS=http://localhost:3000
 
@@ -148,7 +148,7 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-All 85 tests are offline — no live database or API key needed. External calls (OpenAI, pgvector, Tavily, DuckDuckGo) are fully mocked.
+All 85 tests are offline — no live database or API key needed. External calls (OpenAI, pgvector, Tavily) are fully mocked.
 
 ---
 
@@ -391,7 +391,7 @@ MAX_HISTORY_TURNS   = 10                      # MAX_HISTORY_TURNS env var
 MAX_TOKENS_PER_TURN = 300                     # token budget per history turn
 ALLOWED_ORIGINS     = "http://localhost:3000" # ALLOWED_ORIGINS env var (comma-separated)
 API_KEY             = ""                      # enables X-API-Key auth when non-empty
-TAVILY_API_KEY      = ""                      # set to use Tavily; unset = DuckDuckGo fallback
+TAVILY_API_KEY      = ""                      # required for web search
 ```
 
 To switch LLM provider:

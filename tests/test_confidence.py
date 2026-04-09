@@ -29,10 +29,15 @@ class TestComputeSourceQuality:
         result = compute_source_quality(state)
         assert result["tier"] == "external_web"
 
-    def test_web_search_duckduckgo_is_external_web(self):
-        state = make_state(source="Web Search (DuckDuckGo)", is_relevant="Yes", iteration_count=1)
+    def test_uploaded_document_is_uploaded_document_tier(self):
+        state = make_state(source="Uploaded Document", is_relevant="Yes", iteration_count=1)
         result = compute_source_quality(state)
-        assert result["tier"] == "external_web"
+        assert result["tier"] == "uploaded_document"
+
+    def test_uploaded_document_has_label(self):
+        state = make_state(source="Uploaded Document", is_relevant="Yes", iteration_count=1)
+        result = compute_source_quality(state)
+        assert result["label"] == "Uploaded document"
 
     def test_failed_web_search_is_failed(self):
         state = make_state(source="Web Search (failed)", is_relevant="Yes", iteration_count=1)

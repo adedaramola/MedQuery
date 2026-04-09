@@ -62,6 +62,40 @@ def init_schema() -> None:
         put_conn(conn)
 
 
+def init_document_schema() -> None:
+    """Create document_chunks table + indexes (idempotent)."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS document_chunks (
+                    id          TEXT PRIMARY KEY,
+                    content     TEXT NOT NULL,
+                    embedding   vector({VECTOR_DIM}),
+                    metadata    JSONB,
+                    filename    TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    uploaded_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding
+                ON document_chunks USING hnsw (embedding vector_cosine_ops)
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_document_chunks_filename
+                ON document_chunks(filename)
+            """)
+            conn.commit()
+        logger.info("document_chunks schema initialised")
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Document schema init error: {e}")
+        raise
+    finally:
+        put_conn(conn)
+
+
 # ──────────────────────────────────────────────────────────
 # Embeddings
 # ──────────────────────────────────────────────────────────
@@ -125,6 +159,10 @@ def count_device() -> int:
     return _count("medical_device")
 
 
+def count_documents() -> int:
+    return _count("document_chunks")
+
+
 # ──────────────────────────────────────────────────────────
 # Ingest
 # ──────────────────────────────────────────────────────────
@@ -150,6 +188,80 @@ def _upsert(table: str, ids: List[str], docs: List[str], metas: List[dict]) -> N
     except Exception as e:
         conn.rollback()
         logger.error(f"Upsert error: {e}")
+        raise
+    finally:
+        put_conn(conn)
+
+
+def query_documents(query: str, n: int = N_RESULTS) -> List[str]:
+    return _query_table("document_chunks", query, n)
+
+
+def ingest_document_chunks(
+    ids: List[str],
+    texts: List[str],
+    metas: List[dict],
+    filename: str,
+) -> int:
+    """Embed and upsert document chunks. Returns the number of chunks stored."""
+    import json as _json
+    from datetime import datetime, timezone
+
+    embeddings = _embed(texts)
+    conn = get_vector_conn()
+    try:
+        with conn.cursor() as cur:
+            for id_, text, emb, meta, idx in zip(ids, texts, embeddings, metas, range(len(ids))):
+                cur.execute(
+                    """
+                    INSERT INTO document_chunks
+                        (id, content, embedding, metadata, filename, chunk_index)
+                    VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        content     = EXCLUDED.content,
+                        embedding   = EXCLUDED.embedding,
+                        metadata    = EXCLUDED.metadata,
+                        uploaded_at = NOW()
+                    """,
+                    (id_, text, emb, _json.dumps(meta), filename, meta.get("chunk_index", idx)),
+                )
+        conn.commit()
+        logger.info(f"Upserted {len(ids)} chunks for '{filename}'")
+        return len(ids)
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Document chunk upsert error: {e}")
+        raise
+    finally:
+        put_conn(conn)
+
+
+def list_documents() -> List[str]:
+    """Return a sorted list of distinct filenames in document_chunks."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT filename FROM document_chunks ORDER BY filename")
+            return [row[0] for row in cur.fetchall()]
+    except Exception:
+        return []
+    finally:
+        put_conn(conn)
+
+
+def delete_document_chunks(filename: str) -> int:
+    """Delete all chunks for *filename*. Returns the number of rows deleted."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM document_chunks WHERE filename = %s", (filename,))
+            deleted = cur.rowcount
+        conn.commit()
+        logger.info(f"Deleted {deleted} chunks for '{filename}'")
+        return deleted
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Document chunk delete error: {e}")
         raise
     finally:
         put_conn(conn)

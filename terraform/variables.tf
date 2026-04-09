@@ -64,6 +64,12 @@ variable "openai_api_key" {
   sensitive   = true
 }
 
+variable "tavily_api_key" {
+  description = "Tavily API key for web search — injected at plan/apply time via TF_VAR_tavily_api_key"
+  type        = string
+  sensitive   = true
+}
+
 variable "app_api_key" {
   description = "Optional X-API-Key for the backend. Leave empty to disable auth."
   type        = string

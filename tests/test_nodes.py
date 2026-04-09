@@ -36,6 +36,13 @@ class TestRouterNode:
         result = nodes.router_node(state)
         assert result["source"] == "web_search"
 
+    def test_routes_to_uploaded_document(self, monkeypatch):
+        from backend.pipeline import nodes
+        monkeypatch.setattr(nodes, "get_llm_response", MagicMock(return_value="uploaded_document"))
+        state = make_state(query="What does the uploaded guideline say?")
+        result = nodes.router_node(state)
+        assert result["routed_to"] == "uploaded_document"
+
     def test_invalid_llm_response_falls_back_to_web_search(self, monkeypatch):
         from backend.pipeline import nodes
         monkeypatch.setattr(nodes, "get_llm_response", MagicMock(return_value="InvalidOption"))
@@ -113,25 +120,39 @@ class TestRetrieveDevice:
 
 
 # ---------------------------------------------------------------------------
+# retrieve_uploaded
+# ---------------------------------------------------------------------------
+
+class TestRetrieveUploaded:
+    def test_populates_context(self, monkeypatch):
+        from backend.pipeline import nodes
+        monkeypatch.setattr(nodes, "query_documents", MagicMock(return_value=["Chunk 1.", "Chunk 2."]))
+        state = make_state(query="What does the uploaded guideline say?")
+        result = nodes.retrieve_uploaded(state)
+        assert "Chunk 1." in result["context"]
+        assert result["source"] == "Uploaded Document"
+
+    def test_handles_empty_results(self, monkeypatch):
+        from backend.pipeline import nodes
+        monkeypatch.setattr(nodes, "query_documents", MagicMock(return_value=[]))
+        state = make_state()
+        result = nodes.retrieve_uploaded(state)
+        assert result["context"] == ""
+        assert result["source"] == "Uploaded Document"
+
+    def test_handles_exception_gracefully(self, monkeypatch):
+        from backend.pipeline import nodes
+        monkeypatch.setattr(nodes, "query_documents", MagicMock(side_effect=RuntimeError("DB error")))
+        state = make_state()
+        result = nodes.retrieve_uploaded(state)
+        assert result["context"] == ""
+
+
+# ---------------------------------------------------------------------------
 # web_search
 # ---------------------------------------------------------------------------
 
 class TestWebSearch:
-    def test_populates_context_on_success_via_duckduckgo(self, monkeypatch):
-        """With no TAVILY_API_KEY set, falls back to DuckDuckGo."""
-        from backend.pipeline import nodes
-        # Ensure Tavily is not used
-        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "")
-        monkeypatch.setattr(
-            nodes,
-            "_web_search_duckduckgo",
-            MagicMock(return_value=["COVID news article 1.", "COVID news article 2."]),
-        )
-        state = make_state(query="Latest COVID news")
-        result = nodes.web_search(state)
-        assert "COVID news article 1." in result["context"]
-        assert result["source"] == "Web Search (DuckDuckGo)"
-
     def test_populates_context_on_success_via_tavily(self, monkeypatch):
         """With TAVILY_API_KEY set, uses Tavily."""
         from backend.pipeline import nodes
@@ -148,20 +169,28 @@ class TestWebSearch:
 
     def test_empty_results(self, monkeypatch):
         from backend.pipeline import nodes
-        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "")
-        monkeypatch.setattr(nodes, "_web_search_duckduckgo", MagicMock(return_value=[]))
+        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "tvly-fake-key")
+        monkeypatch.setattr(nodes, "_web_search_tavily", MagicMock(return_value=[]))
         state = make_state(query="very obscure query")
         result = nodes.web_search(state)
         assert result["context"] == "No results found"
 
     def test_handles_exception_gracefully(self, monkeypatch):
         from backend.pipeline import nodes
-        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "")
+        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "tvly-fake-key")
         monkeypatch.setattr(
             nodes,
-            "_web_search_duckduckgo",
+            "_web_search_tavily",
             MagicMock(side_effect=RuntimeError("Network error")),
         )
+        state = make_state()
+        result = nodes.web_search(state)
+        assert "Search error" in result["context"]
+        assert result["source"] == "Web Search (failed)"
+
+    def test_raises_error_when_no_tavily_key(self, monkeypatch):
+        from backend.pipeline import nodes
+        monkeypatch.setattr(nodes, "TAVILY_API_KEY", "")
         state = make_state()
         result = nodes.web_search(state)
         assert "Search error" in result["context"]

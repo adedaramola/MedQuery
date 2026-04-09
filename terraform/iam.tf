@@ -38,6 +38,7 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
         [
           aws_secretsmanager_secret.openai_api_key.arn,
           aws_secretsmanager_secret.db_url.arn,
+          aws_secretsmanager_secret.tavily_api_key.arn,
         ],
         var.app_api_key != "" ? [aws_secretsmanager_secret.app_api_key[0].arn] : []
       )

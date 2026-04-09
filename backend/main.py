@@ -10,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 
 from backend.config import API_VERSION, ALLOWED_ORIGINS
 from backend.limiter import limiter
-from backend.vector_store import init_schema
+from backend.vector_store import init_schema, init_document_schema
 from backend.history import init_history_schema
 from backend.routes.query import router as query_router
 from backend.routes.health import router as health_router
@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting MedQuery Backend")
     try:
         init_schema()
+        init_document_schema()
         init_history_schema()
         logger.info("PostgreSQL schema ready")
     except Exception as e:

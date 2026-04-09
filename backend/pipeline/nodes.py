@@ -4,7 +4,7 @@ from typing import List
 from backend.config import MAX_ITERATIONS, TAVILY_API_KEY
 from backend.llm import get_llm_response
 from backend.models import GraphState
-from backend.vector_store import query_qna, query_device
+from backend.vector_store import query_qna, query_device, query_documents
 from backend.pipeline.state import compute_source_quality
 
 logger = logging.getLogger(__name__)
@@ -23,15 +23,6 @@ def _web_search_tavily(query: str, max_results: int = 3) -> list[str]:
     return [r.get("content", "") for r in results if r.get("content")]
 
 
-def _web_search_duckduckgo(query: str, max_results: int = 3) -> list[str]:
-    """DuckDuckGo fallback — development only, may be rate-limited in production."""
-    from duckduckgo_search import DDGS
-    with DDGS() as ddgs:
-        results = list(ddgs.text(query, max_results=max_results))
-    return [r["body"] for r in results if r.get("body")]
-
-
-
 def router_node(state: GraphState) -> GraphState:
     prompt = f"""You are a medical query router. Read the question below and decide which knowledge source is most appropriate.
 
@@ -40,12 +31,13 @@ Question: "{state['query']}"
 Choose exactly one:
 - medical_knowledge: General medical knowledge — conditions, symptoms, diagnoses, treatments, medications, pathophysiology
 - device_manual: Medical equipment and devices — named devices, implants, scanners, monitors, pumps, and their indications, contraindications, or operation
+- uploaded_document: Content from user-uploaded documents such as research papers, clinical guidelines, reports, or custom reference material
 - web_search: Anything requiring current information — recent guidelines, news, drug approvals, or data not covered by the above
 
 Reply with only the option name, nothing else."""
 
     decision = get_llm_response(prompt, temperature=0).strip()
-    valid = {"medical_knowledge", "device_manual", "web_search"}
+    valid = {"medical_knowledge", "device_manual", "uploaded_document", "web_search"}
     state["routed_to"] = decision if decision in valid else "web_search"
     state["source"] = state["routed_to"]
     state["routing_reason"] = f"Routed to {state['routed_to']}"
@@ -83,15 +75,25 @@ def retrieve_device(state: GraphState) -> GraphState:
         return state
 
 
+def retrieve_uploaded(state: GraphState) -> GraphState:
+    try:
+        docs = query_documents(state["query"])
+        state["context"] = "\n".join(docs)
+        state["source"] = "Uploaded Document"
+        logger.info(f"Retrieved {len(docs)} document chunks")
+        return state
+    except Exception as e:
+        logger.error(f"Document retrieval error: {e}")
+        state["context"] = ""
+        return state
+
+
 def web_search(state: GraphState) -> GraphState:
     try:
-        if TAVILY_API_KEY:
-            snippets = _web_search_tavily(state["query"])
-            provider = "Tavily"
-        else:
-            logger.warning("TAVILY_API_KEY not set — falling back to DuckDuckGo (dev only)")
-            snippets = _web_search_duckduckgo(state["query"])
-            provider = "DuckDuckGo"
+        if not TAVILY_API_KEY:
+            raise RuntimeError("TAVILY_API_KEY is not set — web search is unavailable")
+        snippets = _web_search_tavily(state["query"])
+        provider = "Tavily"
 
         state["context"] = "\n".join(snippets) if snippets else "No results found"
         state["source"] = f"Web Search ({provider})"

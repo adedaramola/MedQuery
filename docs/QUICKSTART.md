@@ -91,7 +91,7 @@ DATABASE_URL=postgresql://<your-system-username>@localhost/medical_rag
 
 Optional but recommended:
 ```
-TAVILY_API_KEY=tvly-...      # production web search (DuckDuckGo used if not set)
+TAVILY_API_KEY=tvly-...      # required for web search
 API_KEY=your-secret          # enables X-API-Key auth on query endpoints
 ALLOWED_ORIGINS=http://localhost:3000
 MAX_HISTORY_TURNS=10
