@@ -16,10 +16,10 @@ A **medical question-answering system** built with FastAPI, LangGraph, and Postg
 ┌──────────────────▼──────────────────────────────────────┐
 │ FastAPI Backend (backend/)                              │
 │ ┌─────────────────────────────────────────────┐        │
-│ │ LangGraph Pipeline                          │        │
-│ │  START → Router → [QnA|Device|Web] →       │        │
-│ │          Relevance Check → Augment →       │        │
-│ │          Generate → END                     │        │
+│ │ LangGraph Pipeline                              │      │
+│ │  START → Router → [QnA|Device|Doc|Web] →       │    │
+│ │          Relevance Check → Augment →           │    │
+│ │          Generate → END                         │    │
 │ └─────────────────────────────────────────────┘        │
 │ - Safety guardrail: scope check + harm patterns        │
 │ - OpenAI GPT-4o-mini (routing, generation, scope)      │
@@ -42,9 +42,10 @@ A **medical question-answering system** built with FastAPI, LangGraph, and Postg
 
 ### Prerequisites
 - Python 3.10+
-- Node.js 18+
+- Node.js 24+
 - Docker (recommended) or PostgreSQL 16 with pgvector extension
 - OpenAI API key
+- Tavily API key (required for web search — free tier available at https://tavily.com)
 
 ### Option A — Docker Compose (recommended)
 
@@ -89,6 +90,16 @@ curl -X POST "http://localhost:8000/api/ingest"
 Data sources (in `data/`):
 - `medical_pubmed.csv` — PubMed abstracts (run `data/fetch_real_data.py` to refresh)
 - `medical_fda_labels.csv` — FDA drug label excerpts
+
+### Ingest Custom Documents (PDF / DOCX / TXT)
+
+Drop files into `data/documents/` then run:
+
+```bash
+python data/ingest_documents.py
+```
+
+Files are parsed, split into overlapping 800-character chunks, embedded via OpenAI, and stored in the `document_chunks` table. Successfully processed files are moved to `data/documents/processed/` automatically. The pipeline will route queries to these chunks when relevant.
 
 ## API Endpoints
 
@@ -147,8 +158,8 @@ Ingest CSV data into PostgreSQL/pgvector. Safe to call multiple times (upsert).
 ## Pipeline
 
 1. **Safety check** — GPT-4o-mini classifies whether the query is medical/health-related; non-medical queries are rejected before retrieval. High-risk harm patterns are blocked separately.
-2. **Router** — decides retrieval source: Q&A corpus, device/drug data, or web search
-3. **Retriever** — fetches top-N documents via cosine similarity (pgvector) or Tavily web search
+2. **Router** — decides retrieval source: Q&A corpus, device/drug data, uploaded documents, or web search
+3. **Retriever** — fetches top-N documents via cosine similarity (pgvector), searches uploaded document chunks, or calls Tavily web search
 4. **Relevance check** — validates whether the context answers the question; falls back to web search if not (max 3 iterations)
 5. **Augment** — builds a RAG prompt with context + conversation history
 6. **Generate** — streams the answer token-by-token via SSE
@@ -175,13 +186,15 @@ Infrastructure is defined in [`terraform/`](terraform/) and provisions:
 - **ALB** — public load balancer
 - **RDS PostgreSQL 16** — vector store + conversation history (private subnet)
 - **S3 + CloudFront** — React frontend (HTTPS, `/api/*` proxied to ALB)
-- **Secrets Manager** — `OPENAI_API_KEY`, `DATABASE_URL`
+- **Secrets Manager** — `OPENAI_API_KEY`, `DATABASE_URL`, `TAVILY_API_KEY`
 - **IAM user** — least-privilege CI/CD credentials for GitHub Actions
 
 ```bash
 cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# Fill in: openai_api_key, db_password
+
+export TF_VAR_openai_api_key="sk-..."
+export TF_VAR_tavily_api_key="tvly-..."
+export TF_VAR_db_password="$(openssl rand -base64 32)"
 
 terraform init
 terraform apply

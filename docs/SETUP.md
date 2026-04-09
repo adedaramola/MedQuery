@@ -5,7 +5,7 @@
 | Tool | Version | Notes |
 |------|---------|-------|
 | Python | 3.10+ | `python3 --version` |
-| Node.js | 18+ | `node --version` |
+| Node.js | 24+ | `node --version` |
 | PostgreSQL | 16 | with pgvector extension |
 | Docker | 24+ | required for Docker Compose and AWS deployment |
 | Terraform | 1.6+ | required for AWS deployment |
@@ -89,7 +89,7 @@ On macOS, `<your-system-username>` is the output of `whoami`. A local PostgreSQL
 alembic upgrade head
 ```
 
-Creates `medical_qna`, `medical_device`, and `conversation_turns` tables with HNSW indexes.
+Creates `medical_qna`, `medical_device`, `document_chunks`, and `conversation_turns` tables with HNSW indexes.
 
 To roll back:
 ```bash
@@ -131,7 +131,19 @@ print(counts)
 
 Expected: `{'qa': 786, 'device': 23}`
 
-### 9. Start the Frontend
+### 9. Ingest Custom Documents (Optional)
+
+Drop PDF, DOCX, or TXT files into `data/documents/`, then run:
+
+```bash
+python data/ingest_documents.py
+```
+
+Each file is parsed, split into overlapping 800-character chunks, embedded, and stored in the `document_chunks` table. Files are moved to `data/documents/processed/` after successful ingestion so they are not re-processed on the next run. The pipeline routes queries to these chunks when the router decides the question matches uploaded content.
+
+Supported formats: `.pdf`, `.docx`, `.txt`
+
+### 10. Start the Frontend
 
 ```bash
 npm start
@@ -148,7 +160,7 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-All 85 tests are offline — no live database or API key needed. External calls (OpenAI, pgvector, Tavily) are fully mocked.
+All 119 tests are offline — no live database or API key needed. External calls (OpenAI, pgvector, Tavily) are fully mocked.
 
 ---
 
@@ -214,7 +226,8 @@ ECS Fargate → Secrets Manager (OPENAI_API_KEY, DATABASE_URL, API_KEY)
 cd terraform
 
 export TF_VAR_openai_api_key="sk-..."
-export TF_VAR_db_password="your-strong-db-password"
+export TF_VAR_tavily_api_key="tvly-..."
+export TF_VAR_db_password="$(openssl rand -base64 32)"
 export TF_VAR_app_api_key=""   # leave empty to disable API key auth
 
 terraform init

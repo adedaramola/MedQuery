@@ -38,7 +38,7 @@ print(ingest_data(qa_csv='', device_csv='', pubmed_csv='data/medical_pubmed.csv'
 ### 1. Prerequisites
 
 - Python 3.10+
-- Node.js 18+
+- Node.js 24+
 - PostgreSQL 16 with pgvector
 
 Install PostgreSQL 16 (macOS):
@@ -89,9 +89,9 @@ OPENAI_API_KEY=sk-...
 DATABASE_URL=postgresql://<your-system-username>@localhost/medical_rag
 ```
 
-Optional but recommended:
+Required for web search:
 ```
-TAVILY_API_KEY=tvly-...      # required for web search
+TAVILY_API_KEY=tvly-...      # required for web search — get a free key at https://tavily.com
 API_KEY=your-secret          # enables X-API-Key auth on query endpoints
 ALLOWED_ORIGINS=http://localhost:3000
 MAX_HISTORY_TURNS=10
@@ -166,7 +166,7 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-All 85 tests run offline — no live database or OpenAI API key required.
+All 119 tests run offline — no live database or OpenAI API key required.
 
 ---
 

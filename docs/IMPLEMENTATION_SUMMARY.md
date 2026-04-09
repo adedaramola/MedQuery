@@ -20,9 +20,10 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 | `safety.py` | Safety guardrails: `check_safety()` classifies queries as `BLOCKED` / `FLAGGED` / `SAFE`; `append_safety_disclaimer()` appends medical disclaimers to flagged responses |
 | `db.py` | psycopg2 `ThreadedConnectionPool`; `get_conn()` (plain) and `get_vector_conn()` (pgvector adapter registered) |
 | `history.py` | PostgreSQL conversation store with turn-count and token-aware truncation (`_truncate_to_token_budget()`) |
-| `vector_store.py` | pgvector tables with HNSW indexes; `ingest_data()` prioritises real CSVs (PubMed, FDA) over synthetic fallbacks |
-| `pipeline/state.py` | `compute_source_quality()` — returns tier/label/disclaimer dict; replaces the old heuristic confidence float |
-| `pipeline/nodes.py` | All LangGraph nodes; `web_search` uses Tavily (requires `TAVILY_API_KEY`); `get_llm_response` imported from `backend/llm.py` |
+| `vector_store.py` | pgvector tables with HNSW indexes; `ingest_data()` for CSV corpus; `ingest_document_chunks()`, `query_documents()`, `list_documents()`, `delete_document_chunks()` for uploaded files |
+| `document_ingestion.py` | Parses PDF (pypdf), DOCX (python-docx), and TXT files; splits text into 800-char chunks with 150-char overlap; deterministic MD5 chunk IDs for safe upserts |
+| `pipeline/state.py` | `compute_source_quality()` — returns tier/label/disclaimer dict; tiers: `verified_corpus`, `uploaded_document`, `external_web`, `failed`, `unknown` |
+| `pipeline/nodes.py` | All LangGraph nodes; `retrieve_uploaded` queries `document_chunks`; `web_search` uses Tavily (requires `TAVILY_API_KEY`); `get_llm_response` imported from `backend/llm.py` |
 | `pipeline/graph.py` | `build_agentic_rag()` graph builder; `query_rag()` executor; `stream_rag_response()` SSE generator using `stream_llm_response()` |
 | `routes/query.py` | Safety gate before all queries; `POST /api/query`; `POST /api/query/stream` (auth + rate limited) |
 | `routes/health.py` | `GET /api/health`, `POST /api/ingest`, `GET /` |
@@ -44,6 +45,9 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 |------|---------|
 | `fetch_real_data.py` | Downloads real medical data from PubMed E-utilities (786 abstracts) and openFDA drug labels (23 labels); outputs `medical_pubmed.csv` and `medical_fda_labels.csv`; each abstract block has a unique Question key to prevent deduplication collisions |
 | `generate_data.py` | Generates synthetic fallback datasets using `CONDITIONS × QNA_TEMPLATES` combinations |
+| `ingest_documents.py` | Batch script: reads all PDF/DOCX/TXT files from `data/documents/`, chunks and embeds them, stores in `document_chunks`, moves processed files to `data/documents/processed/` |
+| `documents/` | Drop PDF, DOCX, or TXT files here; run `python data/ingest_documents.py` to ingest |
+| `documents/processed/` | Files moved here after successful ingestion; not re-processed on subsequent runs |
 | `medical_pubmed.csv` | 786 real PubMed abstracts across 20 clinical topics — primary Q&A corpus |
 | `medical_fda_labels.csv` | 23 real FDA drug labels — primary device/drug corpus |
 | `medical_q_n_a.csv` | Synthetic Q&A dataset — not ingested unless real data is absent |
@@ -56,6 +60,7 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 | `env.py` | Alembic environment — reads `DATABASE_URL` from environment |
 | `script.py.mako` | Template for new migration files |
 | `versions/20240101_0001_initial_schema.py` | Creates `medical_qna`, `medical_device`, `conversation_turns` tables and HNSW indexes; includes `downgrade()` |
+| `versions/20260409_0002_document_chunks.py` | Adds `document_chunks` table with HNSW embedding index and filename index; includes `downgrade()` |
 
 ### Scripts (`scripts/`)
 
@@ -73,7 +78,7 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 | `.env.example` | Fully documented secrets template: `OPENAI_API_KEY`, `DATABASE_URL`, `POSTGRES_PASSWORD`, `TAVILY_API_KEY`, `ALLOWED_ORIGINS`, `API_KEY`, `MAX_HISTORY_TURNS`, `NCBI_API_KEY` |
 | `.dockerignore` | Excludes `.env`, `node_modules`, `.venv`, `tests/`, `terraform/`, `docs/` from Docker build context |
 | `Dockerfile` | Backend container: copies `backend/`, `data/`, `migrations/`, `alembic.ini`, `scripts/docker-entrypoint.sh`; ENTRYPOINT runs migrations then uvicorn |
-| `Dockerfile.frontend` | Multi-stage frontend build: Node 18 Alpine (build) → nginx 1.25 Alpine (serve); `REACT_APP_API_URL` baked in as build arg |
+| `Dockerfile.frontend` | Multi-stage frontend build: Node 24 Alpine (build) → nginx 1.25 Alpine (serve); `REACT_APP_API_URL` baked in as build arg |
 | `nginx.conf` | nginx: SPA fallback routing, `/api/*` proxy to `backend:8000`, SSE buffering disabled, `/nginx-health` health check endpoint |
 | `docker-compose.yml` | Full-stack local orchestration: `db` (pgvector/pgvector:pg16) + `backend` (depends on db healthy) + `frontend` (depends on backend healthy); `DATABASE_URL` injected with Docker-internal hostname |
 | `alembic.ini` | Alembic configuration |
@@ -88,7 +93,7 @@ A **production-grade Agentic RAG system** for medical knowledge retrieval, with 
 | `outputs.tf` | `backend_url`, `frontend_url`, `ecr_repository_url`, `s3_frontend_bucket`, `rds_endpoint`, `github_actions_secrets` (sensitive — prints all CI secret values) |
 | `vpc.tf` | VPC, public/private subnets across 2 AZs, IGW, NAT Gateway, security groups |
 | `iam.tf` | ECS execution role (ECR + CloudWatch + Secrets Manager) + task role + `medquery-github-ci` IAM user (ECR push, ECS update, S3 sync, CloudFront invalidation) |
-| `secrets.tf` | Secrets Manager secrets: `OPENAI_API_KEY`, `API_KEY`, `DATABASE_URL` |
+| `secrets.tf` | Secrets Manager secrets: `OPENAI_API_KEY`, `TAVILY_API_KEY`, `DATABASE_URL`, `API_KEY` (optional) |
 | `ecr.tf` | ECR repository + lifecycle policy (retains 2 most recent images) |
 | `rds.tf` | RDS PostgreSQL 16 in private subnets; custom parameter group; pgvector-compatible |
 | `alb.tf` | Application Load Balancer, target group, HTTP listener, CloudWatch log group |
@@ -104,7 +109,7 @@ safety_check (backend/safety.py)
     ├── BLOCKED  → crisis response (pipeline never runs)
     └── SAFE / FLAGGED →
           ↓
-        Router → [retrieve_clinical | retrieve_device | web_search]
+        Router → [retrieve_clinical | retrieve_device | retrieve_uploaded | web_search]
                            ↓
                   check_relevance
                     ├── relevant   → augment → generate → END
@@ -188,6 +193,8 @@ TAVILY_API_KEY      = ""       # required for web search
 | Change routing logic | `router_node()` in `backend/pipeline/nodes.py` |
 | Change answer prompt | `augment()` in `backend/pipeline/nodes.py` |
 | Add a new SSE event type | `stream_rag_response()` in `backend/pipeline/graph.py` |
+| Ingest a PDF/DOCX/TXT | Drop file in `data/documents/`, run `python data/ingest_documents.py` |
+| Change chunk size / overlap | `CHUNK_SIZE` / `CHUNK_OVERLAP` constants in `backend/document_ingestion.py` |
 | Add a new data source | New table in `vector_store.py` + new node in `nodes.py` + new edge in `graph.py` |
 | Add a migration | `alembic revision -m "description"` then edit the generated file |
 | Change DB password | `POSTGRES_PASSWORD` in `.env` (rebuild containers after changing) |
