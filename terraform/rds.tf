@@ -43,9 +43,8 @@ resource "aws_db_instance" "postgres" {
   multi_az            = false # set to true for production HA
   publicly_accessible = false
 
-  deletion_protection       = false
-  skip_final_snapshot       = false
-  final_snapshot_identifier = "${var.app_name}-postgres-final-snapshot"
+  deletion_protection = false
+  skip_final_snapshot = true
 
   tags = { Name = "${var.app_name}-postgres" }
 }
