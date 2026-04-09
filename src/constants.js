@@ -13,12 +13,6 @@ export const SOURCE_COLORS = {
     icon: "🔬",
     label: "Device Manual",
   },
-  "Web Search (DuckDuckGo)": {
-    bg: "rgba(245,158,11,0.12)",
-    border: "#f59e0b",
-    icon: "🌐",
-    label: "Web Search",
-  },
   "Web Search": {
     bg: "rgba(245,158,11,0.12)",
     border: "#f59e0b",
